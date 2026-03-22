@@ -3,6 +3,497 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#111318">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Tuner</title>
+  <style>
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #111318;
+      font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: #fff;
+      user-select: none; -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      align-items: center;
+    }
+
+    /* ── верхняя панель: индикатор ── */
+    #meter-wrap {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: 8px;
+      position: relative;
+    }
+
+    canvas#meter {
+      display: block;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    /* ── центральная табличка: нота + центы ── */
+    #info {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 6px 0 10px;
+      gap: 2px;
+    }
+
+    #note-name {
+      font-size: clamp(64px, 18vw, 120px);
+      font-weight: 200;
+      letter-spacing: 0.05em;
+      line-height: 1;
+      color: #fff;
+      transition: color 0.3s ease;
+    }
+    #note-name.in-tune  { color: #4ADE80; }
+    #note-name.silent   { color: rgba(255,255,255,0.2); }
+
+    #cents-display {
+      font-size: clamp(18px, 4.5vw, 28px);
+      font-weight: 300;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.45);
+      min-height: 1.4em;
+      transition: color 0.3s ease;
+    }
+    #cents-display.in-tune { color: #4ADE80; }
+
+    /* ── селектор струн ── */
+    #strings {
+      width: 100%;
+      display: flex;
+      align-items: stretch;
+      background: #1C1F28;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+    }
+
+    .str-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 4px;
+      gap: 3px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: rgba(255,255,255,0.5);
+      font-family: inherit;
+      transition: color 0.15s, background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .str-btn:active { background: rgba(255,255,255,0.06); }
+    .str-btn.active {
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+    }
+    .str-btn .sn {
+      font-size: clamp(18px, 4.8vw, 28px);
+      font-weight: 300;
+      line-height: 1;
+    }
+    .str-btn .so {
+      font-size: clamp(9px, 2.4vw, 13px);
+      opacity: 0.55;
+    }
+    .str-btn.active .indicator {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #4ADE80;
+      margin-top: 4px;
+    }
+    .str-btn .indicator { width:5px; height:5px; margin-top:4px; }
+
+    /* ── оверлей при запуске ── */
+    #overlay {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+      background: rgba(17,19,24,0.92);
+      z-index: 200;
+      cursor: pointer;
+    }
+    #overlay-icon {
+      font-size: 52px; opacity: 0.6;
+    }
+    #overlay-label {
+      font-size: 12px;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.3);
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div id="meter-wrap">
+    <canvas id="meter"></canvas>
+  </div>
+
+  <div id="info">
+    <div id="note-name" class="silent">—</div>
+    <div id="cents-display"></div>
+  </div>
+
+  <div id="strings"></div>
+
+</div>
+
+<div id="overlay">
+  <div id="overlay-icon">🎵</div>
+  <div id="overlay-label">tap to start</div>
+</div>
+
+<script>
+  // ─── струнные пресеты ──────────────────────────────────────────────────────
+  const PRESETS = [
+    { label:'E', oct:'2', freq: 82.41  },
+    { label:'A', oct:'2', freq: 110.00 },
+    { label:'D', oct:'3', freq: 146.83 },
+    { label:'G', oct:'3', freq: 196.00 },
+    { label:'B', oct:'3', freq: 246.94 },
+    { label:'E', oct:'4', freq: 329.63 },
+  ];
+
+  const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+
+  // ─── DOM ───
+  const meterCanvas = document.getElementById('meter');
+  const mctx        = meterCanvas.getContext('2d');
+  const noteEl      = document.getElementById('note-name');
+  const centsEl     = document.getElementById('cents-display');
+  const stringsEl   = document.getElementById('strings');
+  const overlay     = document.getElementById('overlay');
+
+  // ─── строим кнопки струн ───
+  let activeStr = null; // null = chromatic
+  PRESETS.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'str-btn';
+    btn.innerHTML = `<span class="sn">${p.label}</span><span class="so">${p.oct}</span><span class="indicator"></span>`;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.str-btn').forEach(b => b.classList.remove('active'));
+      if (activeStr === i) {
+        activeStr = null;
+      } else {
+        activeStr = i;
+        btn.classList.add('active');
+      }
+    });
+    stringsEl.appendChild(btn);
+  });
+
+  // ─── canvas resize ───
+  function resize() {
+    const W = Math.min(meterCanvas.parentElement.clientWidth, 480);
+    const H = W * 0.72;
+    meterCanvas.width  = W;
+    meterCanvas.height = H;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ─── состояние ───
+  let rawCents    = 0;
+  let needleCents = 0;  // сглаженные
+  let locked      = false;
+  let lockUntil   = 0;
+  let hasPitch    = false;
+
+  // ─── рендер ───
+  const SWING = Math.PI * 0.55;
+
+  function drawMeter() {
+    const W  = meterCanvas.width;
+    const H  = meterCanvas.height;
+    const cx = W / 2;
+    const py = H * 1.06;  // pivot ниже нижнего края
+    const R  = H * 1.0;   // радиус дуги
+
+    // сглаживаем иглу
+    needleCents += (rawCents - needleCents) * (locked ? 0.02 : 0.1);
+
+    const isInTune = locked || (hasPitch && Math.abs(rawCents) <= 6);
+    const norm = Math.max(-1, Math.min(1, needleCents / 50));
+    const angle = -Math.PI / 2 + norm * SWING;
+
+    mctx.clearRect(0, 0, W, H);
+
+    // ── Шкала ──
+    const arcStart = -Math.PI / 2 - SWING;
+    const arcEnd   = -Math.PI / 2 + SWING;
+
+    // фон дуги (тёмная полоса)
+    mctx.beginPath();
+    mctx.arc(cx, py, R, arcStart, arcEnd);
+    mctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    mctx.lineWidth = W * 0.055;
+    mctx.lineCap = 'round';
+    mctx.shadowBlur = 0;
+    mctx.stroke();
+
+    // активная часть дуги
+    if (hasPitch) {
+      const fillEnd = -Math.PI / 2 + norm * SWING;
+      const fillStart = -Math.PI / 2;
+      const isLeft = norm < 0;
+      const arcS = isLeft ? fillEnd : -Math.PI/2;
+      const arcE = isLeft ? -Math.PI/2 : fillEnd;
+
+      const grad = mctx.createLinearGradient(
+        cx + R * Math.cos(arcStart), py + R * Math.sin(arcStart),
+        cx + R * Math.cos(arcEnd),   py + R * Math.sin(arcEnd)
+      );
+      if (isInTune) {
+        grad.addColorStop(0,   '#1ea050');
+        grad.addColorStop(0.5, '#4ADE80');
+        grad.addColorStop(1,   '#1ea050');
+      } else {
+        grad.addColorStop(0,   '#c0152a');
+        grad.addColorStop(0.5, '#ff2c3a');
+        grad.addColorStop(1,   '#c0152a');
+      }
+      mctx.beginPath();
+      mctx.arc(cx, py, R, arcS, arcE);
+      mctx.strokeStyle = grad;
+      mctx.lineWidth = W * 0.055;
+      mctx.lineCap = 'butt';
+      mctx.shadowColor = isInTune ? '#4ADE80' : '#ff2c3a';
+      mctx.shadowBlur  = 18;
+      mctx.stroke();
+      mctx.shadowBlur = 0;
+    }
+
+    // деления шкалы
+    const ticks = [
+      { n:-1,    long:true,  label:'-50' },
+      { n:-0.75, long:false },
+      { n:-0.5,  long:true,  label:'-25' },
+      { n:-0.25, long:false },
+      { n:0,     long:true,  label:' 0'  },
+      { n:0.25,  long:false },
+      { n:0.5,   long:true,  label:'+25' },
+      { n:0.75,  long:false },
+      { n:1,     long:true,  label:'+50' },
+    ];
+
+    ticks.forEach(t => {
+      const a    = -Math.PI / 2 + t.n * SWING;
+      const outer = R + W * 0.035;
+      const inner = outer - (t.long ? W * 0.05 : W * 0.028);
+      mctx.beginPath();
+      mctx.moveTo(cx + inner * Math.cos(a), py + inner * Math.sin(a));
+      mctx.lineTo(cx + outer * Math.cos(a), py + outer * Math.sin(a));
+      mctx.strokeStyle = t.n === 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.22)';
+      mctx.lineWidth = t.long ? 2 : 1;
+      mctx.shadowBlur = 0;
+      mctx.stroke();
+
+      if (t.label) {
+        const lx = cx + (outer + W * 0.04) * Math.cos(a);
+        const ly = py + (outer + W * 0.04) * Math.sin(a);
+        mctx.font = `${Math.round(W * 0.028)}px -apple-system, Helvetica, Arial`;
+        mctx.fillStyle = t.n === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)';
+        mctx.textAlign = 'center';
+        mctx.textBaseline = 'middle';
+        mctx.fillText(t.label, lx, ly);
+      }
+    });
+
+    // ── Игла ──
+    const needleColor = isInTune ? '#4ADE80' : '#ffffff';
+    const tipX = cx + (R - W * 0.02) * Math.cos(angle);
+    const tipY = py + (R - W * 0.02) * Math.sin(angle);
+
+    // тень иглы
+    mctx.beginPath();
+    mctx.moveTo(cx, py);
+    mctx.lineTo(tipX, tipY);
+    mctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    mctx.lineWidth = W * 0.018;
+    mctx.lineCap = 'round';
+    mctx.shadowBlur = 0;
+    mctx.stroke();
+
+    // основная игла
+    mctx.beginPath();
+    mctx.moveTo(cx, py);
+    mctx.lineTo(tipX, tipY);
+    mctx.strokeStyle = needleColor;
+    mctx.lineWidth = W * 0.012;
+    mctx.lineCap = 'round';
+    mctx.shadowColor = needleColor;
+    mctx.shadowBlur  = hasPitch ? 16 : 0;
+    mctx.stroke();
+    mctx.shadowBlur = 0;
+
+    // наконечник стрелки
+    const tipR = W * 0.025;
+    mctx.beginPath();
+    mctx.arc(tipX, tipY, tipR, 0, Math.PI * 2);
+    mctx.fillStyle = needleColor;
+    mctx.shadowColor = needleColor;
+    mctx.shadowBlur  = hasPitch ? 24 : 0;
+    mctx.fill();
+    mctx.shadowBlur = 0;
+
+    // пивот
+    const pivR = W * 0.028;
+    mctx.beginPath();
+    mctx.arc(cx, py, pivR, 0, Math.PI * 2);
+    mctx.fillStyle = '#2A2D38';
+    mctx.fill();
+    mctx.beginPath();
+    mctx.arc(cx, py, pivR * 0.45, 0, Math.PI * 2);
+    mctx.fillStyle = needleColor;
+    mctx.shadowColor = needleColor;
+    mctx.shadowBlur  = 10;
+    mctx.fill();
+    mctx.shadowBlur = 0;
+
+    requestAnimationFrame(drawMeter);
+  }
+  drawMeter();
+
+  // ─── pitch ───
+  function noteFromFreq(f)   { return Math.round(12 * Math.log2(f / 440) + 69); }
+  function freqFromNote(n)   { return 440 * Math.pow(2, (n - 69) / 12); }
+  function centsOff(f, note) { return Math.round(1200 * Math.log2(f / freqFromNote(note))); }
+  function nearestPreset(f) {
+    let best = 0, bestD = Infinity;
+    PRESETS.forEach((p, i) => {
+      const d = Math.abs(Math.log2(f / p.freq));
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    return best;
+  }
+
+  function autoCorrelate(buf, sr) {
+    const N = buf.length;
+    let rms = 0;
+    for (let i=0; i<N; i++) rms += buf[i]*buf[i];
+    rms = Math.sqrt(rms/N);
+    if (rms < 0.007) return -1;
+
+    let r1=0, r2=N-1;
+    const TH=0.2;
+    for (let i=0;i<N/2;i++) { if(Math.abs(buf[i])<TH){r1=i;break;} }
+    for (let i=1;i<N/2;i++) { if(Math.abs(buf[N-i])<TH){r2=N-i;break;} }
+    const sub=buf.slice(r1,r2), SN=sub.length;
+    const c=new Float32Array(SN);
+    for(let i=0;i<SN;i++) for(let j=0;j<SN-i;j++) c[i]+=sub[j]*sub[j+i];
+    let d=0; while(d<SN-1&&c[d]>c[d+1])d++;
+    let mv=-1,mp=-1;
+    for(let i=d;i<SN;i++) if(c[i]>mv){mv=c[i];mp=i;}
+    if(mp<1||mp>=SN-1) return sr/mp;
+    const x1=c[mp-1],x2=c[mp],x3=c[mp+1];
+    const a=(x1+x3-2*x2)/2, bv=(x3-x1)/2;
+    if(a!==0) mp-=bv/(2*a);
+    return sr/mp;
+  }
+
+  // ─── audio ───
+  let audioCtx, analyser, running=false;
+
+  async function startTuner() {
+    if (running) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      await audioCtx.resume();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+        video:false,
+      });
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      running=true;
+      overlay.style.display='none';
+      tick();
+    } catch(e) {
+      console.error(e);
+      alert('Microphone access required.');
+    }
+  }
+
+  function tick() {
+    if (!running) return;
+    const buf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(buf);
+    const freq = autoCorrelate(buf, audioCtx.sampleRate);
+
+    if (freq < 0) {
+      hasPitch = false;
+      rawCents = 0;
+      if (Date.now() > lockUntil) locked = false;
+      noteEl.textContent = '—';
+      noteEl.className = 'silent';
+      centsEl.textContent = '';
+      centsEl.className = '';
+    } else {
+      hasPitch = true;
+      let note, cents;
+
+      if (activeStr !== null) {
+        // режим одной струны
+        const pf = PRESETS[activeStr].freq;
+        cents = Math.round(1200 * Math.log2(freq / pf));
+        cents = Math.max(-50, Math.min(50, cents));
+        note  = PRESETS[activeStr].label;
+      } else {
+        // хроматический режим
+        const n = noteFromFreq(freq);
+        cents   = centsOff(freq, n);
+        cents   = Math.max(-50, Math.min(50, cents));
+        note    = NOTE_NAMES[n % 12];
+      }
+
+      rawCents = cents;
+      const inTune = Math.abs(cents) <= 6;
+      if (inTune) { locked=true; lockUntil=Date.now()+2000; }
+      else if (Math.abs(cents)>14 && Date.now()>lockUntil) locked=false;
+
+      noteEl.textContent = note;
+      noteEl.className   = locked ? 'in-tune' : '';
+
+      const sign = cents > 0 ? '+' : cents < 0 ? '' : '±';
+      centsEl.textContent = `${sign}${cents} ¢`;
+      centsEl.className   = locked ? 'in-tune' : '';
+    }
+
+    setTimeout(tick, 55);
+  }
+
+  overlay.addEventListener('click',    startTuner);
+  overlay.addEventListener('touchend', e => { e.preventDefault(); startTuner(); });
+</script>
+</body>
+</html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#1464C8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

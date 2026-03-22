@@ -1,493 +1,405 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#111318">
+  <meta name="theme-color" content="#1464C8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Tuner</title>
+  <title>Tune</title>
   <style>
-    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
     html, body {
-      width: 100%; height: 100%; overflow: hidden;
-      background: #111318;
-      font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      color: #fff;
-      user-select: none; -webkit-user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    #app {
-      display: flex;
-      flex-direction: column;
+      width: 100%;
       height: 100%;
-      align-items: center;
+      overflow: hidden;
+      background: #1464C8;
     }
 
-    /* в”Ђв”Ђ РІРµСЂС…РЅСЏСЏ РїР°РЅРµР»СЊ: РёРЅРґРёРєР°С‚РѕСЂ в”Ђв”Ђ */
-    #meter-wrap {
-      flex: 1;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      padding-bottom: 8px;
-      position: relative;
-    }
-
-    canvas#meter {
-      display: block;
-      width: 100%;
-      max-width: 480px;
-    }
-
-    /* в”Ђв”Ђ С†РµРЅС‚СЂР°Р»СЊРЅР°СЏ С‚Р°Р±Р»РёС‡РєР°: РЅРѕС‚Р° + С†РµРЅС‚С‹ в”Ђв”Ђ */
-    #info {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 6px 0 10px;
-      gap: 2px;
-    }
-
-    #note-name {
-      font-size: clamp(64px, 18vw, 120px);
-      font-weight: 200;
-      letter-spacing: 0.05em;
-      line-height: 1;
-      color: #fff;
-      transition: color 0.3s ease;
-    }
-    #note-name.in-tune  { color: #4ADE80; }
-    #note-name.silent   { color: rgba(255,255,255,0.2); }
-
-    #cents-display {
-      font-size: clamp(18px, 4.5vw, 28px);
-      font-weight: 300;
-      letter-spacing: 0.12em;
-      color: rgba(255,255,255,0.45);
-      min-height: 1.4em;
-      transition: color 0.3s ease;
-    }
-    #cents-display.in-tune { color: #4ADE80; }
-
-    /* в”Ђв”Ђ СЃРµР»РµРєС‚РѕСЂ СЃС‚СЂСѓРЅ в”Ђв”Ђ */
-    #strings {
-      width: 100%;
-      display: flex;
-      align-items: stretch;
-      background: #1C1F28;
-      border-top: 1px solid rgba(255,255,255,0.07);
-      padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
-    }
-
-    .str-btn {
-      flex: 1;
+    body {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 12px 4px;
-      gap: 3px;
-      cursor: pointer;
-      border: none;
-      background: transparent;
-      color: rgba(255,255,255,0.5);
-      font-family: inherit;
-      transition: color 0.15s, background 0.15s;
+      font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      user-select: none;
+      -webkit-user-select: none;
       -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
-    .str-btn:active { background: rgba(255,255,255,0.06); }
-    .str-btn.active {
-      color: #fff;
-      background: rgba(255,255,255,0.08);
-    }
-    .str-btn .sn {
-      font-size: clamp(18px, 4.8vw, 28px);
-      font-weight: 300;
-      line-height: 1;
-    }
-    .str-btn .so {
-      font-size: clamp(9px, 2.4vw, 13px);
-      opacity: 0.55;
-    }
-    .str-btn.active .indicator {
-      width: 5px; height: 5px;
-      border-radius: 50%;
-      background: #4ADE80;
-      margin-top: 4px;
-    }
-    .str-btn .indicator { width:5px; height:5px; margin-top:4px; }
 
-    /* в”Ђв”Ђ РѕРІРµСЂР»РµР№ РїСЂРё Р·Р°РїСѓСЃРєРµ в”Ђв”Ђ */
+    #note {
+      font-size: clamp(96px, 22vw, 200px);
+      font-weight: 100;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.92);
+      line-height: 1;
+      margin-bottom: 40px;
+      padding-right: 0.12em;
+      transition: opacity 0.5s ease;
+      will-change: opacity;
+    }
+
+    #note.silent {
+      opacity: 0.08;
+    }
+
+    canvas {
+      display: block;
+    }
+
     #overlay {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      flex-direction: column; gap: 16px;
-      background: rgba(17,19,24,0.92);
-      z-index: 200;
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: max(48px, env(safe-area-inset-bottom, 48px));
       cursor: pointer;
+      z-index: 100;
     }
-    #overlay-icon {
-      font-size: 52px; opacity: 0.6;
-    }
+
     #overlay-label {
-      font-size: 12px;
-      letter-spacing: 0.4em;
+      font-size: 11px;
+      letter-spacing: 0.45em;
+      color: rgba(255, 255, 255, 0.18);
       text-transform: uppercase;
-      color: rgba(255,255,255,0.3);
+      font-weight: 400;
+      padding-right: 0.45em; /* compensate tracking */
     }
   </style>
 </head>
 <body>
-<div id="app">
 
-  <div id="meter-wrap">
-    <canvas id="meter"></canvas>
+  <div id="note" class="silent">—</div>
+  <canvas id="canvas"></canvas>
+
+  <div id="overlay">
+    <div id="overlay-label">tap to tune</div>
   </div>
 
-  <div id="info">
-    <div id="note-name" class="silent">вЂ”</div>
-    <div id="cents-display"></div>
-  </div>
+  <script>
+    const canvas  = document.getElementById('canvas');
+    const ctx     = canvas.getContext('2d');
+    const noteEl  = document.getElementById('note');
+    const overlay = document.getElementById('overlay');
 
-  <div id="strings"></div>
+    const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 
-</div>
+    // ─── visual state ────────────────────────────────────────────────────────
+    let gap         = 1.0;
+    let targetGap   = 1.0;
+    let locked      = false;
+    let lockHoldUntil = 0;  // timestamp until which locked stays true
 
-<div id="overlay">
-  <div id="overlay-icon">рџЋµ</div>
-  <div id="overlay-label">tap to start</div>
-</div>
+    const C_DETUNE = { r: 255, g: 44,  b: 58  };
+    const C_INTUNE = { r: 255, g: 215, b: 0   };
+    let currentColor = { ...C_DETUNE };
 
-<script>
-  // в”Ђв”Ђв”Ђ СЃС‚СЂСѓРЅРЅС‹Рµ РїСЂРµСЃРµС‚С‹ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-  const PRESETS = [
-    { label:'E', oct:'2', freq: 82.41  },
-    { label:'A', oct:'2', freq: 110.00 },
-    { label:'D', oct:'3', freq: 146.83 },
-    { label:'G', oct:'3', freq: 196.00 },
-    { label:'B', oct:'3', freq: 246.94 },
-    { label:'E', oct:'4', freq: 329.63 },
-  ];
-
-  const NOTE_NAMES = ['C','Cв™Ї','D','Dв™Ї','E','F','Fв™Ї','G','Gв™Ї','A','Aв™Ї','B'];
-
-  // в”Ђв”Ђв”Ђ DOM в”Ђв”Ђв”Ђ
-  const meterCanvas = document.getElementById('meter');
-  const mctx        = meterCanvas.getContext('2d');
-  const noteEl      = document.getElementById('note-name');
-  const centsEl     = document.getElementById('cents-display');
-  const stringsEl   = document.getElementById('strings');
-  const overlay     = document.getElementById('overlay');
-
-  // в”Ђв”Ђв”Ђ СЃС‚СЂРѕРёРј РєРЅРѕРїРєРё СЃС‚СЂСѓРЅ в”Ђв”Ђв”Ђ
-  let activeStr = null; // null = chromatic
-  PRESETS.forEach((p, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'str-btn';
-    btn.innerHTML = `<span class="sn">${p.label}</span><span class="so">${p.oct}</span><span class="indicator"></span>`;
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.str-btn').forEach(b => b.classList.remove('active'));
-      if (activeStr === i) {
-        activeStr = null;
-      } else {
-        activeStr = i;
-        btn.classList.add('active');
-      }
-    });
-    stringsEl.appendChild(btn);
-  });
-
-  // в”Ђв”Ђв”Ђ canvas resize в”Ђв”Ђв”Ђ
-  function resize() {
-    const W = Math.min(meterCanvas.parentElement.clientWidth, 480);
-    const H = W * 0.72;
-    meterCanvas.width  = W;
-    meterCanvas.height = H;
-  }
-  resize();
-  window.addEventListener('resize', resize);
-
-  // в”Ђв”Ђв”Ђ СЃРѕСЃС‚РѕСЏРЅРёРµ в”Ђв”Ђв”Ђ
-  let rawCents    = 0;
-  let needleCents = 0;  // СЃРіР»Р°Р¶РµРЅРЅС‹Рµ
-  let locked      = false;
-  let lockUntil   = 0;
-  let hasPitch    = false;
-
-  // в”Ђв”Ђв”Ђ СЂРµРЅРґРµСЂ в”Ђв”Ђв”Ђ
-  const SWING = Math.PI * 0.55;
-
-  function drawMeter() {
-    const W  = meterCanvas.width;
-    const H  = meterCanvas.height;
-    const cx = W / 2;
-    const py = H * 1.06;  // pivot РЅРёР¶Рµ РЅРёР¶РЅРµРіРѕ РєСЂР°СЏ
-    const R  = H * 1.0;   // СЂР°РґРёСѓСЃ РґСѓРіРё
-
-    // СЃРіР»Р°Р¶РёРІР°РµРј РёРіР»Сѓ
-    needleCents += (rawCents - needleCents) * (locked ? 0.02 : 0.1);
-
-    const isInTune = locked || (hasPitch && Math.abs(rawCents) <= 6);
-    const norm = Math.max(-1, Math.min(1, needleCents / 50));
-    const angle = -Math.PI / 2 + norm * SWING;
-
-    mctx.clearRect(0, 0, W, H);
-
-    // в”Ђв”Ђ РЁРєР°Р»Р° в”Ђв”Ђ
-    const arcStart = -Math.PI / 2 - SWING;
-    const arcEnd   = -Math.PI / 2 + SWING;
-
-    // С„РѕРЅ РґСѓРіРё (С‚С‘РјРЅР°СЏ РїРѕР»РѕСЃР°)
-    mctx.beginPath();
-    mctx.arc(cx, py, R, arcStart, arcEnd);
-    mctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    mctx.lineWidth = W * 0.055;
-    mctx.lineCap = 'round';
-    mctx.shadowBlur = 0;
-    mctx.stroke();
-
-    // Р°РєС‚РёРІРЅР°СЏ С‡Р°СЃС‚СЊ РґСѓРіРё
-    if (hasPitch) {
-      const fillEnd = -Math.PI / 2 + norm * SWING;
-      const fillStart = -Math.PI / 2;
-      const isLeft = norm < 0;
-      const arcS = isLeft ? fillEnd : -Math.PI/2;
-      const arcE = isLeft ? -Math.PI/2 : fillEnd;
-
-      const grad = mctx.createLinearGradient(
-        cx + R * Math.cos(arcStart), py + R * Math.sin(arcStart),
-        cx + R * Math.cos(arcEnd),   py + R * Math.sin(arcEnd)
-      );
-      if (isInTune) {
-        grad.addColorStop(0,   '#1ea050');
-        grad.addColorStop(0.5, '#4ADE80');
-        grad.addColorStop(1,   '#1ea050');
-      } else {
-        grad.addColorStop(0,   '#c0152a');
-        grad.addColorStop(0.5, '#ff2c3a');
-        grad.addColorStop(1,   '#c0152a');
-      }
-      mctx.beginPath();
-      mctx.arc(cx, py, R, arcS, arcE);
-      mctx.strokeStyle = grad;
-      mctx.lineWidth = W * 0.055;
-      mctx.lineCap = 'butt';
-      mctx.shadowColor = isInTune ? '#4ADE80' : '#ff2c3a';
-      mctx.shadowBlur  = 18;
-      mctx.stroke();
-      mctx.shadowBlur = 0;
+    function lerpColor(a, b, t) {
+      return {
+        r: Math.round(a.r + (b.r - a.r) * t),
+        g: Math.round(a.g + (b.g - a.g) * t),
+        b: Math.round(a.b + (b.b - a.b) * t),
+      };
     }
 
-    // РґРµР»РµРЅРёСЏ С€РєР°Р»С‹
-    const ticks = [
-      { n:-1,    long:true,  label:'-50' },
-      { n:-0.75, long:false },
-      { n:-0.5,  long:true,  label:'-25' },
-      { n:-0.25, long:false },
-      { n:0,     long:true,  label:' 0'  },
-      { n:0.25,  long:false },
-      { n:0.5,   long:true,  label:'+25' },
-      { n:0.75,  long:false },
-      { n:1,     long:true,  label:'+50' },
-    ];
+    // ─── canvas resize ───────────────────────────────────────────────────────
+    function resize() {
+      canvas.width  = window.innerWidth;
+      canvas.height = 300;
+    }
+    resize();
+    window.addEventListener('resize', resize);
 
-    ticks.forEach(t => {
-      const a    = -Math.PI / 2 + t.n * SWING;
-      const outer = R + W * 0.035;
-      const inner = outer - (t.long ? W * 0.05 : W * 0.028);
-      mctx.beginPath();
-      mctx.moveTo(cx + inner * Math.cos(a), py + inner * Math.sin(a));
-      mctx.lineTo(cx + outer * Math.cos(a), py + outer * Math.sin(a));
-      mctx.strokeStyle = t.n === 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.22)';
-      mctx.lineWidth = t.long ? 2 : 1;
-      mctx.shadowBlur = 0;
-      mctx.stroke();
+    // ─── render loop ─────────────────────────────────────────────────────────
+    const LINE_H      = 32;   // px core height
+    const MAX_HALF     = 0.14;
+    const LINE_CY      = 70;   // fixed y center of line in canvas
+    const NEEDLE_PY    = 285;  // needle pivot y
+    const NEEDLE_R     = 150;  // needle radius
+    const NEEDLE_SWING = Math.PI * 0.52; // ±half-sweep angle
 
-      if (t.label) {
-        const lx = cx + (outer + W * 0.04) * Math.cos(a);
-        const ly = py + (outer + W * 0.04) * Math.sin(a);
-        mctx.font = `${Math.round(W * 0.028)}px -apple-system, Helvetica, Arial`;
-        mctx.fillStyle = t.n === 0 ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)';
-        mctx.textAlign = 'center';
-        mctx.textBaseline = 'middle';
-        mctx.fillText(t.label, lx, ly);
-      }
-    });
+    let needleCents = 0;       // smoothed display cents for needle
+    let rawCents    = 0;       // actual cents from tick
 
-    // в”Ђв”Ђ РРіР»Р° в”Ђв”Ђ
-    const needleColor = isInTune ? '#4ADE80' : '#ffffff';
-    const tipX = cx + (R - W * 0.02) * Math.cos(angle);
-    const tipY = py + (R - W * 0.02) * Math.sin(angle);
+    function drawSegment(x, w, cy, colorStr) {
+      if (w <= 0) return;
+      const { r, g, b } = currentColor;
 
-    // С‚РµРЅСЊ РёРіР»С‹
-    mctx.beginPath();
-    mctx.moveTo(cx, py);
-    mctx.lineTo(tipX, tipY);
-    mctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    mctx.lineWidth = W * 0.018;
-    mctx.lineCap = 'round';
-    mctx.shadowBlur = 0;
-    mctx.stroke();
+      const grad = ctx.createLinearGradient(0, cy - LINE_H * 2.2, 0, cy + LINE_H * 2.2);
+      grad.addColorStop(0,    `rgba(${r},${g},${b},0)`);
+      grad.addColorStop(0.25, `rgba(${r},${g},${b},0.35)`);
+      grad.addColorStop(0.5,  `rgba(${r},${g},${b},1)`);
+      grad.addColorStop(0.75, `rgba(${r},${g},${b},0.35)`);
+      grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
 
-    // РѕСЃРЅРѕРІРЅР°СЏ РёРіР»Р°
-    mctx.beginPath();
-    mctx.moveTo(cx, py);
-    mctx.lineTo(tipX, tipY);
-    mctx.strokeStyle = needleColor;
-    mctx.lineWidth = W * 0.012;
-    mctx.lineCap = 'round';
-    mctx.shadowColor = needleColor;
-    mctx.shadowBlur  = hasPitch ? 16 : 0;
-    mctx.stroke();
-    mctx.shadowBlur = 0;
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 40;
+      ctx.fillStyle   = grad;
+      ctx.fillRect(x, cy - LINE_H * 2.2, w, LINE_H * 4.4);
 
-    // РЅР°РєРѕРЅРµС‡РЅРёРє СЃС‚СЂРµР»РєРё
-    const tipR = W * 0.025;
-    mctx.beginPath();
-    mctx.arc(tipX, tipY, tipR, 0, Math.PI * 2);
-    mctx.fillStyle = needleColor;
-    mctx.shadowColor = needleColor;
-    mctx.shadowBlur  = hasPitch ? 24 : 0;
-    mctx.fill();
-    mctx.shadowBlur = 0;
+      ctx.shadowBlur  = 20;
+      ctx.fillStyle   = colorStr;
+      ctx.fillRect(x, cy - LINE_H / 2, w, LINE_H);
+      ctx.shadowBlur = 0;
+    }
 
-    // РїРёРІРѕС‚
-    const pivR = W * 0.028;
-    mctx.beginPath();
-    mctx.arc(cx, py, pivR, 0, Math.PI * 2);
-    mctx.fillStyle = '#2A2D38';
-    mctx.fill();
-    mctx.beginPath();
-    mctx.arc(cx, py, pivR * 0.45, 0, Math.PI * 2);
-    mctx.fillStyle = needleColor;
-    mctx.shadowColor = needleColor;
-    mctx.shadowBlur  = 10;
-    mctx.fill();
-    mctx.shadowBlur = 0;
+    function drawNeedle(W) {
+      const px = W / 2;
+      const py = NEEDLE_PY;
+      const R  = NEEDLE_R;
 
-    requestAnimationFrame(drawMeter);
-  }
-  drawMeter();
+      // smooth needle
+      needleCents += (rawCents - needleCents) * 0.1;
 
-  // в”Ђв”Ђв”Ђ pitch в”Ђв”Ђв”Ђ
-  function noteFromFreq(f)   { return Math.round(12 * Math.log2(f / 440) + 69); }
-  function freqFromNote(n)   { return 440 * Math.pow(2, (n - 69) / 12); }
-  function centsOff(f, note) { return Math.round(1200 * Math.log2(f / freqFromNote(note))); }
-  function nearestPreset(f) {
-    let best = 0, bestD = Infinity;
-    PRESETS.forEach((p, i) => {
-      const d = Math.abs(Math.log2(f / p.freq));
-      if (d < bestD) { bestD = d; best = i; }
-    });
-    return best;
-  }
+      const { r, g, b } = currentColor;
+      const colorStr = `rgb(${r},${g},${b})`;
+      const norm  = Math.max(-1, Math.min(1, needleCents / 50));
+      const angle = -Math.PI / 2 + norm * NEEDLE_SWING;
 
-  function autoCorrelate(buf, sr) {
-    const N = buf.length;
-    let rms = 0;
-    for (let i=0; i<N; i++) rms += buf[i]*buf[i];
-    rms = Math.sqrt(rms/N);
-    if (rms < 0.007) return -1;
+      // arc track
+      const arcStart = -Math.PI / 2 - NEEDLE_SWING;
+      const arcEnd   = -Math.PI / 2 + NEEDLE_SWING;
+      ctx.beginPath();
+      ctx.arc(px, py, R, arcStart, arcEnd);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 0;
+      ctx.stroke();
 
-    let r1=0, r2=N-1;
-    const TH=0.2;
-    for (let i=0;i<N/2;i++) { if(Math.abs(buf[i])<TH){r1=i;break;} }
-    for (let i=1;i<N/2;i++) { if(Math.abs(buf[N-i])<TH){r2=N-i;break;} }
-    const sub=buf.slice(r1,r2), SN=sub.length;
-    const c=new Float32Array(SN);
-    for(let i=0;i<SN;i++) for(let j=0;j<SN-i;j++) c[i]+=sub[j]*sub[j+i];
-    let d=0; while(d<SN-1&&c[d]>c[d+1])d++;
-    let mv=-1,mp=-1;
-    for(let i=d;i<SN;i++) if(c[i]>mv){mv=c[i];mp=i;}
-    if(mp<1||mp>=SN-1) return sr/mp;
-    const x1=c[mp-1],x2=c[mp],x3=c[mp+1];
-    const a=(x1+x3-2*x2)/2, bv=(x3-x1)/2;
-    if(a!==0) mp-=bv/(2*a);
-    return sr/mp;
-  }
-
-  // в”Ђв”Ђв”Ђ audio в”Ђв”Ђв”Ђ
-  let audioCtx, analyser, running=false;
-
-  async function startTuner() {
-    if (running) return;
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      await audioCtx.resume();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false },
-        video:false,
+      // tick marks at -50, -25, 0, +25, +50 cents
+      [-1, -0.5, 0, 0.5, 1].forEach(n => {
+        const a  = -Math.PI / 2 + n * NEEDLE_SWING;
+        const isCenter = n === 0;
+        const inner = isCenter ? R - 14 : R - 8;
+        ctx.beginPath();
+        ctx.moveTo(px + inner * Math.cos(a), py + inner * Math.sin(a));
+        ctx.lineTo(px + (R + 4) * Math.cos(a), py + (R + 4) * Math.sin(a));
+        ctx.strokeStyle = isCenter ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = isCenter ? 2 : 1;
+        ctx.stroke();
       });
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
-      audioCtx.createMediaStreamSource(stream).connect(analyser);
-      running=true;
-      overlay.style.display='none';
-      tick();
-    } catch(e) {
-      console.error(e);
-      alert('Microphone access required.');
+
+      // needle shaft
+      const tipX = px + R * Math.cos(angle);
+      const tipY = py + R * Math.sin(angle);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(tipX, tipY);
+      ctx.strokeStyle = colorStr;
+      ctx.lineWidth   = 2;
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 14;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // tip circle
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 6, 0, Math.PI * 2);
+      ctx.fillStyle   = colorStr;
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 20;
+      ctx.fill();
+
+      // triangle arrow at tip
+      const perp = angle + Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(tipX + 10 * Math.cos(angle), tipY + 10 * Math.sin(angle));
+      ctx.lineTo(tipX + 7 * Math.cos(perp),   tipY + 7 * Math.sin(perp));
+      ctx.lineTo(tipX - 7 * Math.cos(perp),   tipY - 7 * Math.sin(perp));
+      ctx.closePath();
+      ctx.fillStyle = colorStr;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // pivot dot
+      ctx.beginPath();
+      ctx.arc(px, py, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.shadowBlur = 0;
+      ctx.fill();
     }
-  }
 
-  function tick() {
-    if (!running) return;
-    const buf = new Float32Array(analyser.fftSize);
-    analyser.getFloatTimeDomainData(buf);
-    const freq = autoCorrelate(buf, audioCtx.sampleRate);
+    function drawFrame() {
+      const W  = canvas.width;
+      ctx.clearRect(0, 0, W, canvas.height);
 
-    if (freq < 0) {
-      hasPitch = false;
-      rawCents = 0;
-      if (Date.now() > lockUntil) locked = false;
-      noteEl.textContent = 'вЂ”';
-      noteEl.className = 'silent';
-      centsEl.textContent = '';
-      centsEl.className = '';
-    } else {
-      hasPitch = true;
-      let note, cents;
-
-      if (activeStr !== null) {
-        // СЂРµР¶РёРј РѕРґРЅРѕР№ СЃС‚СЂСѓРЅС‹
-        const pf = PRESETS[activeStr].freq;
-        cents = Math.round(1200 * Math.log2(freq / pf));
-        cents = Math.max(-50, Math.min(50, cents));
-        note  = PRESETS[activeStr].label;
+      if (locked) {
+        gap = 0;
+        currentColor = { ...C_INTUNE };
       } else {
-        // С…СЂРѕРјР°С‚РёС‡РµСЃРєРёР№ СЂРµР¶РёРј
-        const n = noteFromFreq(freq);
-        cents   = centsOff(freq, n);
-        cents   = Math.max(-50, Math.min(50, cents));
-        note    = NOTE_NAMES[n % 12];
+        gap += (targetGap - gap) * 0.08;
+        currentColor = lerpColor(currentColor, C_DETUNE, 0.12);
       }
 
-      rawCents = cents;
-      const inTune = Math.abs(cents) <= 6;
-      if (inTune) { locked=true; lockUntil=Date.now()+2000; }
-      else if (Math.abs(cents)>14 && Date.now()>lockUntil) locked=false;
+      const { r, g, b } = currentColor;
+      const colorStr = `rgb(${r},${g},${b})`;
 
-      noteEl.textContent = note;
-      noteEl.className   = locked ? 'in-tune' : '';
+      // ── линия ──
+      const halfGap    = gap * W * MAX_HALF;
+      const cx         = W / 2;
+      const leftEnd    = Math.max(0, cx - halfGap);
+      const rightStart = Math.min(W, cx + halfGap);
 
-      const sign = cents > 0 ? '+' : cents < 0 ? '' : 'В±';
-      centsEl.textContent = `${sign}${cents} Вў`;
-      centsEl.className   = locked ? 'in-tune' : '';
+      if (locked) {
+        drawSegment(0, W, LINE_CY, colorStr);
+        ctx.shadowColor = colorStr;
+        ctx.shadowBlur  = 70;
+        ctx.fillStyle   = colorStr;
+        ctx.fillRect(0, LINE_CY - LINE_H / 2, W, LINE_H);
+        ctx.shadowBlur  = 0;
+      } else {
+        drawSegment(0, leftEnd,          LINE_CY, colorStr);
+        drawSegment(rightStart, W - rightStart, LINE_CY, colorStr);
+      }
+
+      // ── стрелочный индикатор ──
+      drawNeedle(W);
+
+      requestAnimationFrame(drawFrame);
+    }
+    drawFrame();
+
+    // ─── pitch detection ─────────────────────────────────────────────────────
+    function noteFromFreq(freq) {
+      return Math.round(12 * Math.log2(freq / 440) + 69);
+    }
+    function freqFromNote(n) {
+      return 440 * Math.pow(2, (n - 69) / 12);
+    }
+    function centsOff(freq, note) {
+      return Math.round(1200 * Math.log2(freq / freqFromNote(note)));
     }
 
-    setTimeout(tick, 55);
-  }
+    function autoCorrelate(buf, sampleRate) {
+      const SIZE = buf.length;
 
-  overlay.addEventListener('click',    startTuner);
-  overlay.addEventListener('touchend', e => { e.preventDefault(); startTuner(); });
-</script>
+      // RMS gate
+      let rms = 0;
+      for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.007) return -1;
+
+      // trim silent edges
+      let r1 = 0, r2 = SIZE - 1;
+      const THRES = 0.2;
+      for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buf[i]) < THRES) { r1 = i; break; }
+      }
+      for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buf[SIZE - i]) < THRES) { r2 = SIZE - i; break; }
+      }
+
+      const sub = buf.slice(r1, r2);
+      const N   = sub.length;
+      const c   = new Float32Array(N);
+
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N - i; j++) {
+          c[i] += sub[j] * sub[j + i];
+        }
+      }
+
+      // find first dip then first peak
+      let d = 0;
+      while (d < N - 1 && c[d] > c[d + 1]) d++;
+
+      let maxVal = -1, maxPos = -1;
+      for (let i = d; i < N; i++) {
+        if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
+      }
+
+      // parabolic interpolation for sub-sample accuracy
+      let T0 = maxPos;
+      if (T0 > 0 && T0 < N - 1) {
+        const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+        const a  = (x1 + x3 - 2 * x2) / 2;
+        const bv = (x3 - x1) / 2;
+        if (a !== 0) T0 -= bv / (2 * a);
+      }
+
+      return sampleRate / T0;
+    }
+
+    // ─── audio bootstrap ─────────────────────────────────────────────────────
+    let audioCtx, analyser, running = false;
+
+    async function startTuner() {
+      if (running) return;
+      try {
+        // AudioContext MUST be created synchronously inside the gesture
+        // handler — required by iOS Safari
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        await audioCtx.resume();
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation:  false,
+            noiseSuppression:  false,
+            autoGainControl:   false,
+          },
+          video: false,
+        });
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        audioCtx.createMediaStreamSource(stream).connect(analyser);
+
+        running = true;
+        overlay.style.display = 'none';
+        tick();
+      } catch (e) {
+        console.error(e);
+        alert('Microphone access is required to use the tuner.');
+      }
+    }
+
+    function tick() {
+      if (!running) return;
+
+      const buf = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(buf);
+
+      const freq = autoCorrelate(buf, audioCtx.sampleRate);
+
+      if (freq < 0) {
+        targetGap  = 1.0;
+        rawCents   = 0;
+        if (Date.now() > lockHoldUntil) locked = false;
+        noteEl.textContent = '—';
+        noteEl.classList.add('silent');
+      } else {
+        const note  = noteFromFreq(freq);
+        const cents = centsOff(freq, note);
+        rawCents    = Math.max(-50, Math.min(50, cents));
+        const absC  = Math.min(Math.abs(cents), 50);
+        targetGap   = absC / 50;
+
+        if (Math.abs(cents) <= 6) {
+          locked = true;
+          lockHoldUntil = Date.now() + 2000;  // держим жёлтую 2 секунды
+        } else if (Math.abs(cents) > 14 && Date.now() > lockHoldUntil) {
+          locked = false;
+        }
+
+        noteEl.textContent = NOTE_NAMES[note % 12];
+        noteEl.classList.remove('silent');
+      }
+
+      setTimeout(tick, 55);
+    }
+
+    // ─── interaction ─────────────────────────────────────────────────────────
+    overlay.addEventListener('click',    startTuner);
+    overlay.addEventListener('touchend', e => { e.preventDefault(); startTuner(); });
+  </script>
 </body>
 </html>

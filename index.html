@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#0D1F3C">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Tune</title>
@@ -18,7 +18,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #000000;
+      background: #0D1F3C;
     }
 
     body {
@@ -119,7 +119,7 @@
     window.addEventListener('resize', resize);
 
     // ─── render loop ─────────────────────────────────────────────────────────
-    const LINE_H   = 10;  // px core height
+    const LINE_H   = 20;  // px core height
     const MAX_HALF = 0.14;
 
     function drawSegment(x, w, cy, colorStr) {
@@ -152,10 +152,8 @@
       const H  = canvas.height;
       const cy = H / 2;
 
-      // зачистить фон явно — не полагаться на прозрачность
-      ctx.shadowBlur = 0;
-      ctx.fillStyle  = '#000000';
-      ctx.fillRect(0, 0, W, H);
+      // canvas прозрачный — фон body просвечивает
+      ctx.clearRect(0, 0, W, H);
 
       if (locked) {
         // нота в строю: gap = 0, цвет = жёлтый, анимация остановлена

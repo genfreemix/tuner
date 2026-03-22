@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0D1F3C">
+  <meta name="theme-color" content="#1464C8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Tune</title>
@@ -18,7 +18,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #0D1F3C;
+      background: #1464C8;
     }
 
     body {
@@ -41,8 +41,8 @@
       letter-spacing: 0.12em;
       color: rgba(255, 255, 255, 0.92);
       line-height: 1;
-      margin-bottom: 56px;
-      padding-right: 0.12em; /* compensate letter-spacing on last char */
+      margin-bottom: 40px;
+      padding-right: 0.12em;
       transition: opacity 0.5s ease;
       will-change: opacity;
     }
@@ -96,7 +96,8 @@
     // ─── visual state ────────────────────────────────────────────────────────
     let gap         = 1.0;
     let targetGap   = 1.0;
-    let locked      = false;  // true = in-tune snap, animation frozen
+    let locked      = false;
+    let lockHoldUntil = 0;  // timestamp until which locked stays true
 
     const C_DETUNE = { r: 255, g: 44,  b: 58  };
     const C_INTUNE = { r: 255, g: 215, b: 0   };
@@ -113,79 +114,155 @@
     // ─── canvas resize ───────────────────────────────────────────────────────
     function resize() {
       canvas.width  = window.innerWidth;
-      canvas.height = 96;
+      canvas.height = 300;
     }
     resize();
     window.addEventListener('resize', resize);
 
     // ─── render loop ─────────────────────────────────────────────────────────
-    const LINE_H   = 20;  // px core height
-    const MAX_HALF = 0.14;
+    const LINE_H      = 32;   // px core height
+    const MAX_HALF     = 0.14;
+    const LINE_CY      = 70;   // fixed y center of line in canvas
+    const NEEDLE_PY    = 285;  // needle pivot y
+    const NEEDLE_R     = 150;  // needle radius
+    const NEEDLE_SWING = Math.PI * 0.52; // ±half-sweep angle
+
+    let needleCents = 0;       // smoothed display cents for needle
+    let rawCents    = 0;       // actual cents from tick
 
     function drawSegment(x, w, cy, colorStr) {
       if (w <= 0) return;
-
-      // soft vertical gradient for texture (bright core, faded edges)
-      const grad = ctx.createLinearGradient(0, cy - LINE_H * 2.4, 0, cy + LINE_H * 2.4);
       const { r, g, b } = currentColor;
+
+      const grad = ctx.createLinearGradient(0, cy - LINE_H * 2.2, 0, cy + LINE_H * 2.2);
       grad.addColorStop(0,    `rgba(${r},${g},${b},0)`);
-      grad.addColorStop(0.28, `rgba(${r},${g},${b},0.3)`);
+      grad.addColorStop(0.25, `rgba(${r},${g},${b},0.35)`);
       grad.addColorStop(0.5,  `rgba(${r},${g},${b},1)`);
-      grad.addColorStop(0.72, `rgba(${r},${g},${b},0.3)`);
+      grad.addColorStop(0.75, `rgba(${r},${g},${b},0.35)`);
       grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
 
       ctx.shadowColor = colorStr;
-      ctx.shadowBlur  = 32;
+      ctx.shadowBlur  = 40;
       ctx.fillStyle   = grad;
-      ctx.fillRect(x, cy - LINE_H * 2.4, w, LINE_H * 4.8);
+      ctx.fillRect(x, cy - LINE_H * 2.2, w, LINE_H * 4.4);
 
-      // solid bright core
-      ctx.shadowBlur  = 16;
+      ctx.shadowBlur  = 20;
       ctx.fillStyle   = colorStr;
       ctx.fillRect(x, cy - LINE_H / 2, w, LINE_H);
-
       ctx.shadowBlur = 0;
+    }
+
+    function drawNeedle(W) {
+      const px = W / 2;
+      const py = NEEDLE_PY;
+      const R  = NEEDLE_R;
+
+      // smooth needle
+      needleCents += (rawCents - needleCents) * 0.1;
+
+      const { r, g, b } = currentColor;
+      const colorStr = `rgb(${r},${g},${b})`;
+      const norm  = Math.max(-1, Math.min(1, needleCents / 50));
+      const angle = -Math.PI / 2 + norm * NEEDLE_SWING;
+
+      // arc track
+      const arcStart = -Math.PI / 2 - NEEDLE_SWING;
+      const arcEnd   = -Math.PI / 2 + NEEDLE_SWING;
+      ctx.beginPath();
+      ctx.arc(px, py, R, arcStart, arcEnd);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+
+      // tick marks at -50, -25, 0, +25, +50 cents
+      [-1, -0.5, 0, 0.5, 1].forEach(n => {
+        const a  = -Math.PI / 2 + n * NEEDLE_SWING;
+        const isCenter = n === 0;
+        const inner = isCenter ? R - 14 : R - 8;
+        ctx.beginPath();
+        ctx.moveTo(px + inner * Math.cos(a), py + inner * Math.sin(a));
+        ctx.lineTo(px + (R + 4) * Math.cos(a), py + (R + 4) * Math.sin(a));
+        ctx.strokeStyle = isCenter ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = isCenter ? 2 : 1;
+        ctx.stroke();
+      });
+
+      // needle shaft
+      const tipX = px + R * Math.cos(angle);
+      const tipY = py + R * Math.sin(angle);
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(tipX, tipY);
+      ctx.strokeStyle = colorStr;
+      ctx.lineWidth   = 2;
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 14;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // tip circle
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 6, 0, Math.PI * 2);
+      ctx.fillStyle   = colorStr;
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 20;
+      ctx.fill();
+
+      // triangle arrow at tip
+      const perp = angle + Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(tipX + 10 * Math.cos(angle), tipY + 10 * Math.sin(angle));
+      ctx.lineTo(tipX + 7 * Math.cos(perp),   tipY + 7 * Math.sin(perp));
+      ctx.lineTo(tipX - 7 * Math.cos(perp),   tipY - 7 * Math.sin(perp));
+      ctx.closePath();
+      ctx.fillStyle = colorStr;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // pivot dot
+      ctx.beginPath();
+      ctx.arc(px, py, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.shadowBlur = 0;
+      ctx.fill();
     }
 
     function drawFrame() {
       const W  = canvas.width;
-      const H  = canvas.height;
-      const cy = H / 2;
-
-      // canvas прозрачный — фон body просвечивает
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W, canvas.height);
 
       if (locked) {
-        // нота в строю: gap = 0, цвет = жёлтый, анимация остановлена
         gap = 0;
         currentColor = { ...C_INTUNE };
       } else {
         gap += (targetGap - gap) * 0.08;
-        const colorTarget = C_DETUNE;
-        currentColor = lerpColor(currentColor, colorTarget, 0.12);
+        currentColor = lerpColor(currentColor, C_DETUNE, 0.12);
       }
 
       const { r, g, b } = currentColor;
       const colorStr = `rgb(${r},${g},${b})`;
 
+      // ── линия ──
       const halfGap    = gap * W * MAX_HALF;
       const cx         = W / 2;
       const leftEnd    = Math.max(0, cx - halfGap);
       const rightStart = Math.min(W, cx + halfGap);
 
-      // в строю: одна непрерывная полоса
       if (locked) {
-        drawSegment(0, W, cy, colorStr);
-        // bloom
+        drawSegment(0, W, LINE_CY, colorStr);
         ctx.shadowColor = colorStr;
-        ctx.shadowBlur  = 60;
+        ctx.shadowBlur  = 70;
         ctx.fillStyle   = colorStr;
-        ctx.fillRect(0, cy - LINE_H / 2, W, LINE_H);
+        ctx.fillRect(0, LINE_CY - LINE_H / 2, W, LINE_H);
         ctx.shadowBlur  = 0;
       } else {
-        drawSegment(0, leftEnd, cy, colorStr);
-        drawSegment(rightStart, W - rightStart, cy, colorStr);
+        drawSegment(0, leftEnd,          LINE_CY, colorStr);
+        drawSegment(rightStart, W - rightStart, LINE_CY, colorStr);
       }
+
+      // ── стрелочный индикатор ──
+      drawNeedle(W);
 
       requestAnimationFrame(drawFrame);
     }
@@ -294,20 +371,22 @@
       const freq = autoCorrelate(buf, audioCtx.sampleRate);
 
       if (freq < 0) {
-        targetGap = 1.0;
-        locked    = false;
+        targetGap  = 1.0;
+        rawCents   = 0;
+        if (Date.now() > lockHoldUntil) locked = false;
         noteEl.textContent = '—';
         noteEl.classList.add('silent');
       } else {
         const note  = noteFromFreq(freq);
         const cents = centsOff(freq, note);
+        rawCents    = Math.max(-50, Math.min(50, cents));
         const absC  = Math.min(Math.abs(cents), 50);
         targetGap   = absC / 50;
 
-        // в строю = ≤ 6 центов; выход из строя = > 14 центов
         if (Math.abs(cents) <= 6) {
           locked = true;
-        } else if (Math.abs(cents) > 14) {
+          lockHoldUntil = Date.now() + 2000;  // держим жёлтую 2 секунды
+        } else if (Math.abs(cents) > 14 && Date.now() > lockHoldUntil) {
           locked = false;
         }
 

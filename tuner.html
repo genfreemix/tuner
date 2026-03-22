@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#080C18">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Tune</title>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080C18;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    #note {
+      font-size: clamp(96px, 22vw, 200px);
+      font-weight: 100;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.92);
+      line-height: 1;
+      margin-bottom: 56px;
+      padding-right: 0.12em; /* compensate letter-spacing on last char */
+      transition: opacity 0.5s ease;
+      will-change: opacity;
+    }
+
+    #note.silent {
+      opacity: 0.08;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: max(48px, env(safe-area-inset-bottom, 48px));
+      cursor: pointer;
+      z-index: 100;
+    }
+
+    #overlay-label {
+      font-size: 11px;
+      letter-spacing: 0.45em;
+      color: rgba(255, 255, 255, 0.18);
+      text-transform: uppercase;
+      font-weight: 400;
+      padding-right: 0.45em; /* compensate tracking */
+    }
+  </style>
+</head>
+<body>
+
+  <div id="note" class="silent">—</div>
+  <canvas id="canvas"></canvas>
+
+  <div id="overlay">
+    <div id="overlay-label">tap to tune</div>
+  </div>
+
+  <script>
+    const canvas  = document.getElementById('canvas');
+    const ctx     = canvas.getContext('2d');
+    const noteEl  = document.getElementById('note');
+    const overlay = document.getElementById('overlay');
+
+    const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+
+    // ─── visual state ────────────────────────────────────────────────────────
+    let gap         = 1.0;   // current (smoothed)  0 = in tune, 1 = max detune
+    let targetGap   = 1.0;   // driven by pitch detection
+
+    const C_DETUNE = { r: 255, g: 44,  b: 58  };
+    const C_INTUNE = { r: 255, g: 215, b: 0   };
+    let currentColor = { ...C_DETUNE };
+
+    function lerpColor(a, b, t) {
+      return {
+        r: Math.round(a.r + (b.r - a.r) * t),
+        g: Math.round(a.g + (b.g - a.g) * t),
+        b: Math.round(a.b + (b.b - a.b) * t),
+      };
+    }
+
+    // ─── canvas resize ───────────────────────────────────────────────────────
+    function resize() {
+      canvas.width  = window.innerWidth;
+      canvas.height = 72;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // ─── render loop ─────────────────────────────────────────────────────────
+    const LINE_H   = 3;   // px
+    const MAX_HALF = 0.14; // fraction of W that represents max half-gap
+
+    function drawFrame() {
+      const W  = canvas.width;
+      const H  = canvas.height;
+      const cy = H / 2;
+
+      // smooth gap with ease
+      gap += (targetGap - gap) * 0.072;
+
+      // smooth color
+      const colorTarget = targetGap < 0.07 ? C_INTUNE : C_DETUNE;
+      currentColor = lerpColor(currentColor, colorTarget, 0.055);
+
+      const { r, g, b } = currentColor;
+      const colorStr = `rgb(${r},${g},${b})`;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const halfGap   = gap * W * MAX_HALF;
+      const cx        = W / 2;
+      const leftEnd   = Math.max(0, cx - halfGap);
+      const rightStart= Math.min(W, cx + halfGap);
+
+      // primary glow
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 28;
+      ctx.fillStyle   = colorStr;
+
+      // left segment
+      if (leftEnd > 0) {
+        ctx.fillRect(0, cy - LINE_H / 2, leftEnd, LINE_H);
+      }
+      // right segment
+      if (rightStart < W) {
+        ctx.fillRect(rightStart, cy - LINE_H / 2, W - rightStart, LINE_H);
+      }
+
+      // extra bloom when nearly in tune
+      if (gap < 0.04) {
+        ctx.shadowBlur = 48;
+        ctx.globalAlpha = 1 - gap / 0.04 * 0.05;
+        ctx.fillRect(0, cy - LINE_H / 2, W, LINE_H);
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.shadowBlur = 0;
+
+      requestAnimationFrame(drawFrame);
+    }
+    drawFrame();
+
+    // ─── pitch detection ─────────────────────────────────────────────────────
+    function noteFromFreq(freq) {
+      return Math.round(12 * Math.log2(freq / 440) + 69);
+    }
+    function freqFromNote(n) {
+      return 440 * Math.pow(2, (n - 69) / 12);
+    }
+    function centsOff(freq, note) {
+      return Math.round(1200 * Math.log2(freq / freqFromNote(note)));
+    }
+
+    function autoCorrelate(buf, sampleRate) {
+      const SIZE = buf.length;
+
+      // RMS gate
+      let rms = 0;
+      for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.007) return -1;
+
+      // trim silent edges
+      let r1 = 0, r2 = SIZE - 1;
+      const THRES = 0.2;
+      for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buf[i]) < THRES) { r1 = i; break; }
+      }
+      for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buf[SIZE - i]) < THRES) { r2 = SIZE - i; break; }
+      }
+
+      const sub = buf.slice(r1, r2);
+      const N   = sub.length;
+      const c   = new Float32Array(N);
+
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N - i; j++) {
+          c[i] += sub[j] * sub[j + i];
+        }
+      }
+
+      // find first dip then first peak
+      let d = 0;
+      while (d < N - 1 && c[d] > c[d + 1]) d++;
+
+      let maxVal = -1, maxPos = -1;
+      for (let i = d; i < N; i++) {
+        if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
+      }
+
+      // parabolic interpolation for sub-sample accuracy
+      let T0 = maxPos;
+      if (T0 > 0 && T0 < N - 1) {
+        const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+        const a  = (x1 + x3 - 2 * x2) / 2;
+        const bv = (x3 - x1) / 2;
+        if (a !== 0) T0 -= bv / (2 * a);
+      }
+
+      return sampleRate / T0;
+    }
+
+    // ─── audio bootstrap ─────────────────────────────────────────────────────
+    let audioCtx, analyser, running = false;
+
+    async function startTuner() {
+      if (running) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation:  false,
+            noiseSuppression:  false,
+            autoGainControl:   false,
+          },
+          video: false,
+        });
+
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        audioCtx.createMediaStreamSource(stream).connect(analyser);
+
+        running = true;
+        overlay.style.display = 'none';
+        tick();
+      } catch {
+        alert('Microphone access is required to use the tuner.');
+      }
+    }
+
+    function tick() {
+      if (!running) return;
+
+      const buf = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(buf);
+
+      const freq = autoCorrelate(buf, audioCtx.sampleRate);
+
+      if (freq < 0) {
+        targetGap = 1.0;
+        noteEl.textContent = '—';
+        noteEl.classList.add('silent');
+      } else {
+        const note  = noteFromFreq(freq);
+        const cents = centsOff(freq, note);
+        const absC  = Math.min(Math.abs(cents), 50);
+        targetGap   = absC / 50;
+
+        noteEl.textContent = NOTE_NAMES[note % 12];
+        noteEl.classList.remove('silent');
+      }
+
+      setTimeout(tick, 55);
+    }
+
+    // ─── interaction ─────────────────────────────────────────────────────────
+    overlay.addEventListener('click',    startTuner);
+    overlay.addEventListener('touchend', e => { e.preventDefault(); startTuner(); });
+  </script>
+</body>
+</html>

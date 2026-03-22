@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#080C18">
+  <meta name="theme-color" content="#06070D">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Tune</title>
@@ -18,7 +18,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #080C18;
+      background: #06070D;
     }
 
     body {
@@ -112,24 +112,47 @@
     // ─── canvas resize ───────────────────────────────────────────────────────
     function resize() {
       canvas.width  = window.innerWidth;
-      canvas.height = 72;
+      canvas.height = 96;
     }
     resize();
     window.addEventListener('resize', resize);
 
     // ─── render loop ─────────────────────────────────────────────────────────
-    const LINE_H   = 3;   // px
-    const MAX_HALF = 0.14; // fraction of W that represents max half-gap
+    const LINE_H   = 10;  // px core height
+    const MAX_HALF = 0.14;
+
+    function drawSegment(x, w, cy, colorStr) {
+      if (w <= 0) return;
+
+      // soft vertical gradient for texture (bright core, faded edges)
+      const grad = ctx.createLinearGradient(0, cy - LINE_H * 2.4, 0, cy + LINE_H * 2.4);
+      const { r, g, b } = currentColor;
+      grad.addColorStop(0,    `rgba(${r},${g},${b},0)`);
+      grad.addColorStop(0.28, `rgba(${r},${g},${b},0.3)`);
+      grad.addColorStop(0.5,  `rgba(${r},${g},${b},1)`);
+      grad.addColorStop(0.72, `rgba(${r},${g},${b},0.3)`);
+      grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+
+      ctx.shadowColor = colorStr;
+      ctx.shadowBlur  = 32;
+      ctx.fillStyle   = grad;
+      ctx.fillRect(x, cy - LINE_H * 2.4, w, LINE_H * 4.8);
+
+      // solid bright core
+      ctx.shadowBlur  = 16;
+      ctx.fillStyle   = colorStr;
+      ctx.fillRect(x, cy - LINE_H / 2, w, LINE_H);
+
+      ctx.shadowBlur = 0;
+    }
 
     function drawFrame() {
       const W  = canvas.width;
       const H  = canvas.height;
       const cy = H / 2;
 
-      // smooth gap with ease
       gap += (targetGap - gap) * 0.072;
 
-      // smooth color
       const colorTarget = targetGap < 0.07 ? C_INTUNE : C_DETUNE;
       currentColor = lerpColor(currentColor, colorTarget, 0.055);
 
@@ -138,34 +161,24 @@
 
       ctx.clearRect(0, 0, W, H);
 
-      const halfGap   = gap * W * MAX_HALF;
-      const cx        = W / 2;
-      const leftEnd   = Math.max(0, cx - halfGap);
-      const rightStart= Math.min(W, cx + halfGap);
+      const halfGap    = gap * W * MAX_HALF;
+      const cx         = W / 2;
+      const leftEnd    = Math.max(0, cx - halfGap);
+      const rightStart = Math.min(W, cx + halfGap);
 
-      // primary glow
-      ctx.shadowColor = colorStr;
-      ctx.shadowBlur  = 28;
-      ctx.fillStyle   = colorStr;
+      drawSegment(0, leftEnd, cy, colorStr);
+      drawSegment(rightStart, W - rightStart, cy, colorStr);
 
-      // left segment
-      if (leftEnd > 0) {
-        ctx.fillRect(0, cy - LINE_H / 2, leftEnd, LINE_H);
-      }
-      // right segment
-      if (rightStart < W) {
-        ctx.fillRect(rightStart, cy - LINE_H / 2, W - rightStart, LINE_H);
-      }
-
-      // extra bloom when nearly in tune
+      // bloom при попадании
       if (gap < 0.04) {
-        ctx.shadowBlur = 48;
-        ctx.globalAlpha = 1 - gap / 0.04 * 0.05;
+        ctx.globalAlpha = (1 - gap / 0.04) * 0.18;
+        ctx.shadowColor = colorStr;
+        ctx.shadowBlur  = 60;
+        ctx.fillStyle   = colorStr;
         ctx.fillRect(0, cy - LINE_H / 2, W, LINE_H);
         ctx.globalAlpha = 1;
+        ctx.shadowBlur  = 0;
       }
-
-      ctx.shadowBlur = 0;
 
       requestAnimationFrame(drawFrame);
     }
@@ -238,6 +251,11 @@
     async function startTuner() {
       if (running) return;
       try {
+        // AudioContext MUST be created synchronously inside the gesture
+        // handler — required by iOS Safari
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        await audioCtx.resume();
+
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation:  false,
@@ -247,7 +265,6 @@
           video: false,
         });
 
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 2048;
         audioCtx.createMediaStreamSource(stream).connect(analyser);
@@ -255,7 +272,8 @@
         running = true;
         overlay.style.display = 'none';
         tick();
-      } catch {
+      } catch (e) {
+        console.error(e);
         alert('Microphone access is required to use the tuner.');
       }
     }

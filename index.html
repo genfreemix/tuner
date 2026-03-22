@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#06070D">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Tune</title>
@@ -18,7 +18,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #06070D;
+      background: #000000;
     }
 
     body {
@@ -94,8 +94,9 @@
     const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 
     // ─── visual state ────────────────────────────────────────────────────────
-    let gap         = 1.0;   // current (smoothed)  0 = in tune, 1 = max detune
-    let targetGap   = 1.0;   // driven by pitch detection
+    let gap         = 1.0;
+    let targetGap   = 1.0;
+    let locked      = false;  // true = in-tune snap, animation frozen
 
     const C_DETUNE = { r: 255, g: 44,  b: 58  };
     const C_INTUNE = { r: 255, g: 215, b: 0   };
@@ -151,33 +152,41 @@
       const H  = canvas.height;
       const cy = H / 2;
 
-      gap += (targetGap - gap) * 0.072;
+      // зачистить фон явно — не полагаться на прозрачность
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = '#000000';
+      ctx.fillRect(0, 0, W, H);
 
-      const colorTarget = targetGap < 0.07 ? C_INTUNE : C_DETUNE;
-      currentColor = lerpColor(currentColor, colorTarget, 0.055);
+      if (locked) {
+        // нота в строю: gap = 0, цвет = жёлтый, анимация остановлена
+        gap = 0;
+        currentColor = { ...C_INTUNE };
+      } else {
+        gap += (targetGap - gap) * 0.08;
+        const colorTarget = C_DETUNE;
+        currentColor = lerpColor(currentColor, colorTarget, 0.12);
+      }
 
       const { r, g, b } = currentColor;
       const colorStr = `rgb(${r},${g},${b})`;
-
-      ctx.clearRect(0, 0, W, H);
 
       const halfGap    = gap * W * MAX_HALF;
       const cx         = W / 2;
       const leftEnd    = Math.max(0, cx - halfGap);
       const rightStart = Math.min(W, cx + halfGap);
 
-      drawSegment(0, leftEnd, cy, colorStr);
-      drawSegment(rightStart, W - rightStart, cy, colorStr);
-
-      // bloom при попадании
-      if (gap < 0.04) {
-        ctx.globalAlpha = (1 - gap / 0.04) * 0.18;
+      // в строю: одна непрерывная полоса
+      if (locked) {
+        drawSegment(0, W, cy, colorStr);
+        // bloom
         ctx.shadowColor = colorStr;
         ctx.shadowBlur  = 60;
         ctx.fillStyle   = colorStr;
         ctx.fillRect(0, cy - LINE_H / 2, W, LINE_H);
-        ctx.globalAlpha = 1;
         ctx.shadowBlur  = 0;
+      } else {
+        drawSegment(0, leftEnd, cy, colorStr);
+        drawSegment(rightStart, W - rightStart, cy, colorStr);
       }
 
       requestAnimationFrame(drawFrame);
@@ -288,6 +297,7 @@
 
       if (freq < 0) {
         targetGap = 1.0;
+        locked    = false;
         noteEl.textContent = '—';
         noteEl.classList.add('silent');
       } else {
@@ -295,6 +305,13 @@
         const cents = centsOff(freq, note);
         const absC  = Math.min(Math.abs(cents), 50);
         targetGap   = absC / 50;
+
+        // в строю = ≤ 6 центов; выход из строя = > 14 центов
+        if (Math.abs(cents) <= 6) {
+          locked = true;
+        } else if (Math.abs(cents) > 14) {
+          locked = false;
+        }
 
         noteEl.textContent = NOTE_NAMES[note % 12];
         noteEl.classList.remove('silent');

@@ -416,40 +416,60 @@ function freqFromNote(n) {
 function centsOff(freq, note) {
   return Math.round(1200 * Math.log2(freq / freqFromNote(note)));
 }
-function autoCorrelate(buf, sampleRate, rmsThreshold = 0.015) {
-  const SIZE = buf.length;
+// McLeod Pitch Method — надёжное определение фундаментала для гитары
+function detectPitch(buf, sampleRate, rmsThreshold) {
+  const N = buf.length;
+
+  // RMS gate
   let rms = 0;
-  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
-  rms = Math.sqrt(rms / SIZE);
-  if (rms < rmsThreshold) return -1;
-  let r1 = 0, r2 = SIZE - 1;
-  const THRES = 0.2;
-  for (let i = 0; i < SIZE / 2; i++) {
-    if (Math.abs(buf[i]) < THRES) { r1 = i; break; }
+  for (let i = 0; i < N; i++) rms += buf[i] * buf[i];
+  if (Math.sqrt(rms / N) < rmsThreshold) return -1;
+
+  // Диапазон поиска: только гитарные частоты 70–420 Гц
+  const tauMin = Math.floor(sampleRate / 420);
+  const tauMax = Math.min(Math.ceil(sampleRate / 70), N - 2);
+
+  // Префиксные суммы квадратов для быстрого вычисления m'(τ)
+  const prefix = new Float64Array(N + 1);
+  for (let i = 0; i < N; i++) prefix[i + 1] = prefix[i] + buf[i] * buf[i];
+  const totalSq = prefix[N];
+
+  // NSDF(τ) = 2·r(τ) / m'(τ) — нормализованная функция (МПМ)
+  const nsdf = new Float32Array(tauMax - tauMin + 1);
+  for (let tau = tauMin; tau <= tauMax; tau++) {
+    let r = 0;
+    const len = N - tau;
+    for (let j = 0; j < len; j++) r += buf[j] * buf[j + tau];
+    const m = prefix[len] + totalSq - prefix[tau];
+    nsdf[tau - tauMin] = m > 1e-10 ? (2 * r) / m : 0;
   }
-  for (let i = 1; i < SIZE / 2; i++) {
-    if (Math.abs(buf[SIZE - i]) < THRES) { r2 = SIZE - i; break; }
+
+  // Находим все локальные максимумы
+  let peakMax = 0;
+  const peaks = [];
+  for (let i = 1; i < nsdf.length - 1; i++) {
+    if (nsdf[i] > nsdf[i - 1] && nsdf[i] >= nsdf[i + 1]) {
+      if (nsdf[i] > peakMax) peakMax = nsdf[i];
+      peaks.push(i);
+    }
   }
-  const sub = buf.slice(r1, r2);
-  const N   = sub.length;
-  const c   = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    for (let j = 0; j < N - i; j++) c[i] += sub[j] * sub[j + i];
+  if (peaks.length === 0 || peakMax < 0.5) return -1;
+
+  // Берём ПЕРВЫЙ пик выше 80% от максимума — это фундаментал, не гармоника
+  let T0 = -1;
+  for (const p of peaks) {
+    if (nsdf[p] >= 0.8 * peakMax) { T0 = p; break; }
   }
-  let d = 0;
-  while (d < N - 1 && c[d] > c[d + 1]) d++;
-  let maxVal = -1, maxPos = -1;
-  for (let i = d; i < N; i++) {
-    if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
-  }
-  let T0 = maxPos;
-  if (T0 > 0 && T0 < N - 1) {
-    const x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
-    const a  = (x1 + x3 - 2 * x2) / 2;
-    const bv = (x3 - x1) / 2;
-    if (a !== 0) T0 -= bv / (2 * a);
-  }
-  return sampleRate / T0;
+  if (T0 < 1 || T0 >= nsdf.length - 1) return -1;
+
+  // Параболическая интерполяция для точности до доли сэмпла
+  const y1 = nsdf[T0 - 1], y2 = nsdf[T0], y3 = nsdf[T0 + 1];
+  const a = (y1 + y3 - 2 * y2) / 2;
+  const b = (y3 - y1) / 2;
+  let tFine = T0 + tauMin;
+  if (a !== 0) tFine -= b / (2 * a);
+
+  return sampleRate / tFine;
 }
 
 // ─── TunerApp — обёртка с аудио-движком ─────────────────────────────
@@ -473,7 +493,7 @@ function TunerApp() {
   function tick(analyser, sampleRate) {
     const buf = new Float32Array(analyser.fftSize);
     analyser.getFloatTimeDomainData(buf);
-    const freq = autoCorrelate(buf, sampleRate, paramsRef.current.rmsThreshold);
+    const freq = detectPitch(buf, sampleRate, paramsRef.current.rmsThreshold);
     if (freq < 0) {
       smoothRef.current.cents = 0;
       smoothRef.current.votes = 0;
@@ -482,7 +502,7 @@ function TunerApp() {
         setSignal(false);
       }
       setCents(0);
-    } else if (freq >= 70 && freq <= 420) {
+    } else {
       // ignore anything outside guitar range (70–420 Hz) to reject harmonics/noise
       // find nearest guitar string
       let bestIdx = 0, bestDist = Infinity;

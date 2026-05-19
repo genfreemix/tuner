@@ -672,6 +672,10 @@ function TunerApp() {
 
   function releaseAudioHandle(handle) {
     if (!handle) return;
+    if (handle.stopped) {
+      clearTimeout(handle.timerId);
+      return;
+    }
     handle.stopped = true;
     if (handle.timerId) {
       clearTimeout(handle.timerId);

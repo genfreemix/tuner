@@ -1,1 +1,7 @@
 .vercel
+
+# Local design/preview artifacts
+README.handoff.md
+ios-frame.jsx
+tweaks-panel.jsx
+screenshots/

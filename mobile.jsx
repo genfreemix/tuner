@@ -248,6 +248,7 @@ function MobileTuner({
   onSettingsChange = null,
   onTuningTargetChange = null,
   micError = false,
+  micErrorDetail = '',
 }) {
   const saved = React.useRef(mLoadSettings()).current;
   const [theme, setTheme] = React.useState(saved.theme === 'midnight' || saved.theme === 'cream' ? saved.theme : initialTheme);
@@ -421,6 +422,10 @@ function MobileTuner({
           </svg>
         </button>
       </div>
+
+      {!micRunning && micError && micErrorDetail && (
+        <div className="m-mic-error-detail">{micErrorDetail}</div>
+      )}
 
       <div className="m-safe-bottom" />
 
@@ -641,6 +646,7 @@ function detectPitchForTarget(prep, rmsThreshold, targetFreq, { maxHarmonic = 4,
 function TunerApp() {
   const [micRunning, setMicRunning] = React.useState(false);
   const [micError, setMicError]     = React.useState(false);
+  const [micErrorDetail, setMicErrorDetail] = React.useState('');
   const [cents, setCents]           = React.useState(0);
   const [inputFreq, setInputFreq]   = React.useState(null);
   const [signal, setSignal]         = React.useState(false);
@@ -895,6 +901,13 @@ function TunerApp() {
     if (micRunning || startingRef.current || audioRef.current) return;
     startingRef.current = true;
     setMicError(false);
+    setMicErrorDetail('');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      startingRef.current = false;
+      setMicError(true);
+      setMicErrorDetail('mediaDevices API unavailable (browser/webview not supported)');
+      return;
+    }
     let handle = null;
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -934,6 +947,7 @@ function TunerApp() {
       startingRef.current = false;
       console.error(e);
       setMicError(true);
+      setMicErrorDetail(e && e.name ? `${e.name}: ${e.message || ''}` : String(e));
     }
   }
 
@@ -945,6 +959,7 @@ function TunerApp() {
       readingReady={readingReady}
       micRunning={micRunning}
       micError={micError}
+      micErrorDetail={micErrorDetail}
       inputFreq={inputFreq}
       autoIdx={autoIdx}
       onEngageMic={micRunning ? stopMic : startMic}

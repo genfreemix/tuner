@@ -745,6 +745,18 @@ body {
 .theme-midnight .m-mic-dot { background: #5fffaa; box-shadow: 0 0 8px rgba(95,255,170,0.8); }
 @keyframes m-mic-pulse { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.5;transform:scale(.8);} }
 
+.m-mic-error-detail {
+  margin: 0 12px 4px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: #ff6a4a;
+  text-shadow: 0 0 6px rgba(255,106,74,0.4);
+  word-break: break-word;
+  flex-shrink: 0;
+}
+
 /* ── Settings sheet ────────────────────────────────────────────── */
 .m-settings-overlay {
   position: absolute; inset: 0; z-index: 50;

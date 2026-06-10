@@ -415,7 +415,8 @@ function MobileTuner({
   autoIdx = 0,
   onSettingsChange = null,
   onTuningTargetChange = null,
-  micError = false
+  micError = false,
+  micErrorDetail = ''
 }) {
   const saved = React.useRef(mLoadSettings()).current;
   const [theme, setTheme] = React.useState(saved.theme === 'midnight' || saved.theme === 'cream' ? saved.theme : initialTheme);
@@ -665,7 +666,9 @@ function MobileTuner({
     r: "3"
   }), /*#__PURE__*/React.createElement("path", {
     d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-  })))), /*#__PURE__*/React.createElement("div", {
+  })))), !micRunning && micError && micErrorDetail && /*#__PURE__*/React.createElement("div", {
+    className: "m-mic-error-detail"
+  }, micErrorDetail), /*#__PURE__*/React.createElement("div", {
     className: "m-safe-bottom"
   }), settingsOpen && /*#__PURE__*/React.createElement("div", {
     className: "m-settings-overlay",
@@ -931,6 +934,7 @@ function detectPitchForTarget(prep, rmsThreshold, targetFreq, {
 function TunerApp() {
   const [micRunning, setMicRunning] = React.useState(false);
   const [micError, setMicError] = React.useState(false);
+  const [micErrorDetail, setMicErrorDetail] = React.useState('');
   const [cents, setCents] = React.useState(0);
   const [inputFreq, setInputFreq] = React.useState(null);
   const [signal, setSignal] = React.useState(false);
@@ -1211,6 +1215,13 @@ function TunerApp() {
     if (micRunning || startingRef.current || audioRef.current) return;
     startingRef.current = true;
     setMicError(false);
+    setMicErrorDetail('');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      startingRef.current = false;
+      setMicError(true);
+      setMicErrorDetail('mediaDevices API unavailable (browser/webview not supported)');
+      return;
+    }
     let handle = null;
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1262,6 +1273,7 @@ function TunerApp() {
       startingRef.current = false;
       console.error(e);
       setMicError(true);
+      setMicErrorDetail(e && e.name ? `${e.name}: ${e.message || ''}` : String(e));
     }
   }
   return /*#__PURE__*/React.createElement(MobileTuner, {
@@ -1271,6 +1283,7 @@ function TunerApp() {
     readingReady: readingReady,
     micRunning: micRunning,
     micError: micError,
+    micErrorDetail: micErrorDetail,
     inputFreq: inputFreq,
     autoIdx: autoIdx,
     onEngageMic: micRunning ? stopMic : startMic,

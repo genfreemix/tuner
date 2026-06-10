@@ -1,0 +1,13 @@
+{
+  "name": "gr100-tuner",
+  "private": true,
+  "description": "GR-100 Mobile Tuner — vintage VU-meter guitar tuner",
+  "scripts": {
+    "compile": "babel mobile.jsx --presets @babel/preset-react -o mobile.js"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.24.0",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0"
+  }
+}

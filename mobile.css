@@ -21,24 +21,6 @@ body {
   overflow: hidden;
 }
 
-/* ── Канвас с двумя iPhone'ами ─────────────────────────────────────── */
-.canvas {
-  display: flex;
-  gap: 56px;
-  justify-content: center;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  max-width: 1100px;
-  margin: 0 auto;
-}
-.phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; }
-.phone-label {
-  font-family: 'Times New Roman', serif; font-style: italic;
-  font-size: 14px; color: rgba(255,200,140,0.7);
-  letter-spacing: 0.18em;
-  text-transform: lowercase;
-}
-
 /* ── Mobile shell ──────────────────────────────────────────────────── */
 .m-shell {
   width: 100%; height: 100%;
@@ -713,36 +695,8 @@ body {
     url('assets/gr-logo.png') center / cover no-repeat,
     radial-gradient(circle at 30% 25%, #1a1612 0%, #08070a 100%);
 }
-.m-icon-btn img {
-  width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
-  pointer-events: none;
-}
 .m-icon-btn svg { color: #ffba5a; }
 .theme-midnight .m-icon-btn svg { color: #5fc8ff; }
-.m-icon-btn.demo-on {
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.15),
-    inset 0 -1px 2px rgba(0,0,0,0.6),
-    0 0 0 2px rgba(255,180,80,0.7),
-    0 0 14px rgba(255,180,80,0.6),
-    0 0 28px rgba(255,180,80,0.4);
-  animation: m-demo-pulse 1.4s ease-in-out infinite;
-}
-.theme-midnight .m-icon-btn.demo-on {
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.15),
-    inset 0 -1px 2px rgba(0,0,0,0.6),
-    0 0 0 2px rgba(95,200,255,0.7),
-    0 0 14px rgba(95,200,255,0.6),
-    0 0 28px rgba(95,200,255,0.4);
-}
-@keyframes m-demo-pulse {
-  0%, 100% { filter: brightness(1);   }
-  50%      { filter: brightness(1.25);}
-}
 
 .m-mic-btn {
   appearance: none; border: 1px solid rgba(0,0,0,0.5);
@@ -763,14 +717,26 @@ body {
 .m-mic-btn.running {
   border-color: rgba(58,209,122,0.45);
   color: #3ad17a;
-  cursor: default;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.08),
     inset 0 -1px 2px rgba(0,0,0,0.5),
     0 0 12px rgba(58,209,122,0.25);
 }
-.m-mic-btn:disabled { opacity: 1; }
 .theme-midnight .m-mic-btn.running { color: #5fffaa; border-color: rgba(95,255,170,0.45); }
+.m-mic-btn.error {
+  border-color: rgba(255,106,74,0.45);
+  color: #ff6a4a;
+  text-shadow: 0 0 6px rgba(255,106,74,0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 2px rgba(0,0,0,0.5),
+    0 0 12px rgba(255,106,74,0.25);
+}
+.m-mic-btn.error .m-mic-dot {
+  background: #ff6a4a;
+  box-shadow: 0 0 8px rgba(255,106,74,0.7);
+  animation: none;
+}
 .m-mic-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: #ffba5a; box-shadow: 0 0 8px rgba(255,180,80,0.7);

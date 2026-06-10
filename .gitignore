@@ -5,3 +5,5 @@ README.handoff.md
 ios-frame.jsx
 tweaks-panel.jsx
 screenshots/
+
+node_modules/

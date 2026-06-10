@@ -921,7 +921,36 @@ body {
   color: rgba(255,255,255,0.35);
 }
 
-@media (orientation: landscape) {
+/* ── Landscape (телефон на боку): два столбца — VU слева, управление справа ── */
+@media (orientation: landscape) and (max-height: 560px) {
+  .m-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
+    grid-template-rows: auto auto auto auto 1fr auto auto;
+    grid-template-areas:
+      'safetop safetop'
+      'top     top'
+      'vu      readout'
+      'vu      strings'
+      'vu      dock'
+      'marquee marquee'
+      'safebot safebot';
+    column-gap: 10px;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .m-safe-top    { grid-area: safetop; height: max(env(safe-area-inset-top, 6px), 6px); }
+  .m-top         { grid-area: top; padding: 4px 16px 6px; }
+  .m-vu          { grid-area: vu; margin: 4px 0 0 12px; }
+  .m-readout     { grid-area: readout; margin: 4px 12px 0 0; }
+  .m-strings-section { grid-area: strings; margin: 10px 12px 0 0; }
+  .m-dock        { grid-area: dock; margin: 0 12px; padding: 10px 0; align-self: end; }
+  .m-marquee     { grid-area: marquee; margin: 10px 12px 0; }
+  .m-safe-bottom { grid-area: safebot; height: max(env(safe-area-inset-bottom, 6px), 6px); }
+}
+
+/* Планшеты в landscape (высокий экран) — обычная колонка со скроллом */
+@media (orientation: landscape) and (min-height: 561px) {
   html, body {
     overflow-y: auto;
   }

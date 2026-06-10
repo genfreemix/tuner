@@ -657,7 +657,7 @@ function TunerApp() {
   const audioRef  = React.useRef(null);
   const startingRef = React.useRef(false);
   const lockRef   = React.useRef({ holdUntil: 0, engaged: false, outCount: 0 });
-  const stableRef = React.useRef({ history: [], candidate: 0, votes: 0, silenceCount: 0, smoothCents: 0, lastTrebleAt: 0 });
+  const stableRef = React.useRef({ history: [], candidate: 0, votes: 0, silenceCount: 0, smoothCents: 0, lastTrebleAt: 0, pendingIdx: -1, pendingCount: 0 });
   const paramsRef = React.useRef({ rmsThreshold: 0.0007, emaAlpha: 0.31, refA: 440, mode: 'AUTO', activeIdx: 0 });
 
   function releaseAudioHandle(handle) {
@@ -830,8 +830,24 @@ function TunerApp() {
           : autoMatch;
       setInputFreq(targetMatch.freq);
 
-      // Сбрасываем историю если сменилась струна
+      // Смена струны — только после 2 подряд кадров с новым кандидатом:
+      // одиночный шумовой кадр не стирает накопленную историю и лок
       if (targetIdx !== stableRef.current.candidate) {
+        if (targetIdx === stableRef.current.pendingIdx) {
+          stableRef.current.pendingCount += 1;
+        } else {
+          stableRef.current.pendingIdx = targetIdx;
+          stableRef.current.pendingCount = 1;
+        }
+        if (stableRef.current.pendingCount < 2) {
+          handle.timerId = setTimeout(() => {
+            const current = audioRef.current;
+            if (current && !current.stopped && !document.hidden) tick(current.analyser, sampleRate);
+          }, 55);
+          return;
+        }
+        stableRef.current.pendingIdx = -1;
+        stableRef.current.pendingCount = 0;
         stableRef.current.history = [];
         stableRef.current.candidate = targetIdx;
         stableRef.current.votes = 1;
@@ -841,6 +857,8 @@ function TunerApp() {
         setLockReady(false);
         setReadingReady(false);
       } else {
+        stableRef.current.pendingIdx = -1;
+        stableRef.current.pendingCount = 0;
         stableRef.current.votes = Math.min(stableRef.current.votes + 1, 10);
       }
 
@@ -857,7 +875,7 @@ function TunerApp() {
       const h = stableRef.current.history;
       if (isTrebleString && h.length >= 4) {
         const baseline = mMedian(h.slice(-5));
-        if (Math.abs(rawC - baseline) > 28 && pitch.clarity < 0.92) {
+        if (Math.abs(rawC - baseline) > 34 && pitch.clarity < 0.88) {
           handle.timerId = setTimeout(() => {
             const current = audioRef.current;
             if (current && !current.stopped && !document.hidden) tick(current.analyser, sampleRate);
@@ -871,14 +889,14 @@ function TunerApp() {
 
       // Обновляем стрелку ТОЛЬКО когда последние 4 замера совпадают (±12¢)
       // Во время атаки струны держим старое значение — как реальный тюнер
-      if (h.length >= (isTrebleString ? 5 : 3)) {
-        const recent = h.slice(isTrebleString ? -7 : -5);
+      if (h.length >= (isTrebleString ? 4 : 3)) {
+        const recent = h.slice(isTrebleString ? -6 : -5);
         const span = Math.max(...recent) - Math.min(...recent);
-        const spanLimit = isTrebleString ? 13 : 18;
+        const spanLimit = isTrebleString ? 15 : 18;
         if (span <= spanLimit || pitch.clarity > 0.86) {
           const measured = mClamp(mMedian(recent), -50, 50);
           // во время лока сглаживаем сильнее — шумовые выбросы не раскачивают c
-          const alpha = paramsRef.current.emaAlpha * (isTrebleString ? 0.58 : 1) * (lockRef.current.engaged ? 0.6 : 1);
+          const alpha = paramsRef.current.emaAlpha * (isTrebleString ? 0.68 : 1) * (lockRef.current.engaged ? 0.6 : 1);
           stableRef.current.smoothCents += (measured - stableRef.current.smoothCents) * alpha;
           const c = Math.round(mClamp(stableRef.current.smoothCents, -50, 50));
           if (paramsRef.current.mode === 'AUTO' && stableRef.current.votes >= 5) setAutoIdx(bestIdx);
@@ -895,7 +913,7 @@ function TunerApp() {
           // Вход в лок — по реальному замеру (медиане), а не по сглаженному c:
           // EMA доезжает до нуля с запаздыванием, и лок зря ждал её.
           const inZone = Math.abs(c) <= 3 || Math.abs(measured) <= 2.5;
-          if (inZone && (lockClarity > 0.62 || steadyEnough)) {
+          if (inZone && (lockClarity > 0.58 || steadyEnough)) {
             lockRef.current.outCount = 0;
             if (stableRef.current.votes >= 3 && h.length >= 4) {
               if (!lockRef.current.engaged) stableRef.current.smoothCents = measured;

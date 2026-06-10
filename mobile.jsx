@@ -881,7 +881,17 @@ function TunerApp() {
           stableRef.current.smoothCents += (measured - stableRef.current.smoothCents) * alpha;
           const c = Math.round(mClamp(stableRef.current.smoothCents, -50, 50));
           if (paramsRef.current.mode === 'AUTO' && stableRef.current.votes >= 5) setAutoIdx(bestIdx);
-          if (Math.abs(c) <= 3 && pitch.clarity > 0.62) {
+          // Для лока берём лучшую clarity из всех детекторов: на струнах с
+          // сильной 2-й гармоникой (соль!) ранний пик NSDF бывает слабым,
+          // хотя нота определена стабильно. Запасной путь — длинная серия
+          // стабильных замеров (узкий разброс) тоже даёт лок.
+          const lockClarity = Math.max(
+            pitch.clarity || 0,
+            pitchLong ? pitchLong.clarity : 0,
+            pitchShort ? pitchShort.clarity : 0
+          );
+          const steadyEnough = stableRef.current.votes >= 6 && span <= 6;
+          if (Math.abs(c) <= 3 && (lockClarity > 0.62 || steadyEnough)) {
             if (stableRef.current.votes >= 4 && h.length >= 4) {
               setInTune(true);
               setLockReady(true);
@@ -944,7 +954,7 @@ function TunerApp() {
       handle.source = source;
       handle.analyser = analyser;
       handle.inputGain = inputGain;
-      inputGain.gain.value = 3.2;
+      inputGain.gain.value = 3.9;
       analyser.fftSize = 8192;
       analyser.smoothingTimeConstant = 0;
       handle.buf = new Float32Array(analyser.fftSize);

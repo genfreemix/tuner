@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "ru.genrubit.tuner",
+        "sha256_cert_fingerprints": ["B6:A6:91:26:C2:B4:27:DE:8D:9E:4B:84:E9:C3:8C:65:8F:5A:A3:CF:72:46:08:8E:97:C8:7E:72:4E:B0:E4:40"]
+      }
+    }]

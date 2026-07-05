@@ -728,7 +728,12 @@ function MobileTuner({
     key: hz,
     className: `m-settings-pill ${refA === hz ? 'on' : ''}`,
     onClick: () => setRefA(hz)
-  }, hz, " Hz")))), /*#__PURE__*/React.createElement("button", {
+  }, hz, " Hz")))), /*#__PURE__*/React.createElement("a", {
+    className: "m-settings-privacy",
+    href: "https://tuner-jet-sigma.vercel.app/privacy.html",
+    target: "_blank",
+    rel: "noopener noreferrer"
+  }, "PRIVACY POLICY"), /*#__PURE__*/React.createElement("button", {
     className: "m-settings-close",
     onClick: () => setSettingsOpen(false)
   }, "CLOSE"))), promoOpen && /*#__PURE__*/React.createElement("div", {

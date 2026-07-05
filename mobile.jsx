@@ -467,6 +467,10 @@ function MobileTuner({
               </div>
             </div>
 
+            <a className="m-settings-privacy"
+               href="https://tuner-jet-sigma.vercel.app/privacy.html"
+               target="_blank" rel="noopener noreferrer">PRIVACY POLICY</a>
+
             <button className="m-settings-close" onClick={() => setSettingsOpen(false)}>CLOSE</button>
           </div>
         </div>

@@ -968,7 +968,8 @@ body {
   .m-marquee { display: none; }
 }
 
-/* Планшеты в landscape (высокий экран) — обычная колонка со скроллом */
+/* Ноутбук/планшет в landscape (высокий экран) — приложение «устройством»
+   по центру тёмной витрины, вместо растягивания на всю ширину */
 @media (orientation: landscape) and (min-height: 561px) {
   html, body {
     overflow-y: auto;
@@ -977,9 +978,19 @@ body {
   #m-root {
     overflow-y: auto;
     min-height: 700px;
+    align-items: center;
+    padding: 24px 0;
   }
 
   .m-shell {
+    width: 420px;
+    max-width: 100%;
     min-height: 700px;
+    height: calc(100vh - 48px);
+    max-height: 940px;
+    border-radius: 26px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.07),
+      0 34px 90px rgba(0,0,0,0.65);
   }
 }

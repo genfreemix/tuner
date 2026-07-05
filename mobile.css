@@ -977,16 +977,16 @@ body {
 
   #m-root {
     overflow-y: auto;
-    min-height: 700px;
+    min-height: 632px;
     align-items: center;
-    padding: 24px 0;
+    padding: 12px 0;
   }
 
   .m-shell {
     width: 420px;
     max-width: 100%;
-    min-height: 700px;
-    height: calc(100vh - 48px);
+    min-height: 620px;
+    height: calc(100vh - 24px);
     max-height: 940px;
     border-radius: 26px;
     box-shadow:

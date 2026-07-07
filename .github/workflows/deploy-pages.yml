@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   deploy:
+    # деплой сайта — только в репо-зеркале genfreemix.github.io
+    if: github.repository == 'genfreemix/genfreemix.github.io'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

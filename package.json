@@ -3,12 +3,18 @@
   "private": true,
   "description": "GR-100 Mobile Tuner — vintage VU-meter guitar tuner",
   "scripts": {
-    "compile": "babel mobile.jsx --presets @babel/preset-react -o mobile.js"
+    "compile": "babel mobile.jsx --presets @babel/preset-react -o mobile.js",
+    "build:www": "node scripts/build-www.js"
   },
   "devDependencies": {
     "@babel/cli": "^7.24.0",
     "@babel/core": "^7.24.0",
     "@babel/preset-react": "^7.24.0",
     "puppeteer-core": "^25.1.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1"
   }
 }

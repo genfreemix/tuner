@@ -931,16 +931,11 @@ function detectPitchForTarget(prep, rmsThreshold, targetFreq, {
   return best;
 }
 
-// ─── Калибровка шума и детект удара ──────────────────────────────────
-// NF_MARGIN  — во сколько раз сигнал должен превышать уровень шума,
-//              чтобы считаться струной (иначе — фон, игнорируем).
-// ATTACK_RATIO — резкий подъём громкости в N раз = новый удар по струне
-//              (сигнал к перезамеру и выходу из «вечного» лока).
-// ATTACK_COOLDOWN — минимальный интервал между ударами (мс), чтобы
-//              один щипок не считался несколько раз.
+// ─── Калибровка шума ─────────────────────────────────────────────────
+// NF_MARGIN — во сколько раз сигнал должен превышать уровень шума, чтобы
+//             считаться струной (иначе — фон, игнорируем). Этот же порог
+//             ловит глушение струны: rms упал ниже → мгновенный сброс.
 const NF_MARGIN = 2.2;
-const ATTACK_RATIO = 2.2;
-const ATTACK_COOLDOWN = 220;
 
 // ─── TunerApp — обёртка с аудио-движком ─────────────────────────────
 function TunerApp() {
@@ -971,14 +966,10 @@ function TunerApp() {
     pendingIdx: -1,
     pendingCount: 0
   });
-  // Огибающая громкости для калибровки шума и детекта удара:
-  // fast — быстрая (реагирует на атаку), slow — медленная (фон/сустейн),
-  // noiseFloor — плавающий уровень тишины (быстро вниз, медленно вверх).
+  // Плавающий уровень тишины помещения (быстро вниз, медленно вверх) —
+  // база для адаптивного порога и детекта глушения струны.
   const envRef = React.useRef({
-    fast: 0,
-    slow: 0,
-    noiseFloor: 0,
-    lastAttack: 0
+    noiseFloor: 0
   });
   const paramsRef = React.useRef({
     rmsThreshold: 0.0007,
@@ -1026,10 +1017,7 @@ function TunerApp() {
     stableRef.current.smoothCents = 0;
     lockRef.current.holdUntil = 0;
     lockRef.current.engaged = false;
-    envRef.current.fast = 0;
-    envRef.current.slow = 0;
     envRef.current.noiseFloor = 0;
-    envRef.current.lastAttack = 0;
     if (!resetState) return;
     setMicRunning(false);
     setSignal(false);
@@ -1094,35 +1082,17 @@ function TunerApp() {
     const shortStart = Math.max(0, buf.length - 4096);
     const prepShort = mPrepareNsdf(buf.subarray(shortStart), sampleRate);
 
-    // ── Калибровка уровня шума + детект удара ─────────────────────────
+    // ── Калибровка уровня шума ────────────────────────────────────────
     // Плавающий noiseFloor быстро опускается к тишине и медленно растёт,
     // отслеживая реальный фон помещения. Эффективный порог берём как
     // максимум из пользовательской чувствительности и (шум × запас) —
     // так фон отсекается, а к явному звуку струны чувствительность
-    // остаётся высокой.
+    // остаётся высокой. Этот же порог служит детектором глушения струны.
     const env = envRef.current;
     const frameRms = prepLong.rms;
-    const transientRms = prepShort.rms; // короткое окно — отзывчивее на атаку
-    const prevSlow = env.slow || frameRms;
+    const transientRms = prepShort.rms; // короткое окно — отзывчивее на затухание
     if (env.noiseFloor === 0 || frameRms < env.noiseFloor) env.noiseFloor = frameRms;else env.noiseFloor += (frameRms - env.noiseFloor) * 0.0006;
     const floorGate = Math.max(paramsRef.current.rmsThreshold, env.noiseFloor * NF_MARGIN);
-    const nowMs = Date.now();
-    // новый удар: резкий подъём короткой громкости над медленной огибающей,
-    // явно выше порога шума и не чаще ATTACK_COOLDOWN
-    const isAttack = transientRms > floorGate && transientRms > prevSlow * ATTACK_RATIO && nowMs - env.lastAttack > ATTACK_COOLDOWN;
-    env.fast += (transientRms - env.fast) * 0.5;
-    env.slow += (frameRms - env.slow) * 0.06;
-    if (isAttack) {
-      // новый щипок — выходим из «вечного» лока и начинаем замер заново
-      env.lastAttack = nowMs;
-      lockRef.current.engaged = false;
-      lockRef.current.outCount = 0;
-      lockRef.current.holdUntil = 0;
-      stableRef.current.history = [];
-      stableRef.current.votes = 0;
-      setInTune(false);
-      setLockReady(false);
-    }
     const pitchLong = detectPitch(prepLong, floorGate, {
       preferEarly: true,
       minPeak: 0.48
@@ -1157,27 +1127,30 @@ function TunerApp() {
       pitch = null;
     }
     if (!pitch) {
-      stableRef.current.history = [];
-      stableRef.current.silenceCount = Math.min(stableRef.current.silenceCount + 1, 20);
-      if (lockRef.current.engaged) {
-        // ВЕЧНЫЙ ЛОК: струна попала в строй и затухает — держим зелёный
-        // статус и стрелку на нуле бесконечно. Сброс — только по новому
-        // удару (детект выше) либо смене струны. Fade out лок не гасит.
-        setCents(0);
-      } else {
-        const heldTreble = stableRef.current.candidate >= 4 || Date.now() - stableRef.current.lastTrebleAt < 900;
-        if (stableRef.current.silenceCount > (heldTreble ? 10 : 3)) {
+      // Кадр без чёткого питча. Различаем два случая:
+      //  • громкость ниже порога → струну ЗАГЛУШИЛИ → мгновенный сброс в Idle
+      //  • громкость есть, но кадр «шумный» → струна ещё звучит → держим статус
+      const muted = transientRms < floorGate;
+      if (muted) {
+        stableRef.current.silenceCount = Math.min(stableRef.current.silenceCount + 1, 20);
+        // сброс через 2 кадра (~110 мс) — ощущается мгновенно, но переживает
+        // одиночный провал; при глушении ладонью rms падает сразу
+        if (stableRef.current.silenceCount >= 2) {
+          stableRef.current.history = [];
+          stableRef.current.votes = 0;
+          stableRef.current.smoothCents = 0;
+          lockRef.current.engaged = false;
+          lockRef.current.outCount = 0;
+          lockRef.current.holdUntil = 0;
           setInTune(false);
           setLockReady(false);
           setReadingReady(false);
           setSignal(false);
           setInputFreq(null);
-          stableRef.current.smoothCents *= heldTreble ? 0.86 : 0.62;
-          if (Math.abs(stableRef.current.smoothCents) < 1.5) stableRef.current.smoothCents = 0;
-          const idleCents = Math.round(stableRef.current.smoothCents);
-          setCents(idleCents);
+          setCents(0);
         }
       }
+      // если звук ещё есть (не muted) — ничего не трогаем, ждём чистый кадр
     } else {
       stableRef.current.silenceCount = 0;
       setSignal(true);
@@ -1203,12 +1176,38 @@ function TunerApp() {
       const targetIdx = paramsRef.current.mode === 'MANUAL' ? paramsRef.current.activeIdx : bestIdx;
       if (targetIdx >= 4) stableRef.current.lastTrebleAt = Date.now();
       const targetFreq = M_STRINGS[targetIdx].freq * refScale;
-      const targetMatch = paramsRef.current.mode === 'MANUAL' && manualPitch ? {
-        freq: manualPitch.freq,
-        cents: manualPitch.cents,
-        harmonic: manualPitch.harmonic,
-        score: manualPitch.score
-      } : paramsRef.current.mode === 'MANUAL' ? mCorrectedPitchForString(pitch.freq, targetFreq, targetIdx >= 4 ? 1 : 4) : autoMatch;
+      // Тонкие струны — 1-я E (idx5), 2-я B (idx4), 3-я G (idx3): у них слабый
+      // фундаментал и сильные обертоны, поэтому им нужен гармоникочувствительный
+      // замер и усиленное усреднение.
+      const isThin = targetIdx >= 3;
+      let targetMatch;
+      if (paramsRef.current.mode === 'MANUAL') {
+        targetMatch = manualPitch ? {
+          freq: manualPitch.freq,
+          cents: manualPitch.cents,
+          harmonic: manualPitch.harmonic,
+          score: manualPitch.score
+        } : mCorrectedPitchForString(pitch.freq, targetFreq, targetIdx >= 4 ? 1 : 4);
+      } else {
+        // AUTO: центы уточняем тем же гармоникочувствительным поиском, что и
+        // MANUAL — он привязывается к фундаменталу выбранной струны и не
+        // «прыгает» по обертонам, как обобщённая ближайшая нота.
+        const maxH = targetIdx >= 4 ? 2 : 4;
+        const range = isThin ? 120 : 150;
+        const refined = detectPitchForTarget(prepShort, floorGate * 0.6, targetFreq, {
+          maxHarmonic: maxH,
+          centsRange: range
+        }) || detectPitchForTarget(prepLong, floorGate * 0.8, targetFreq, {
+          maxHarmonic: maxH,
+          centsRange: range
+        });
+        targetMatch = refined ? {
+          freq: refined.freq,
+          cents: refined.cents,
+          harmonic: refined.harmonic,
+          score: refined.score
+        } : autoMatch;
+      }
       setInputFreq(targetMatch.freq);
 
       // Смена струны — только после 2 подряд кадров с новым кандидатом:
@@ -1245,11 +1244,6 @@ function TunerApp() {
 
       // Накапливаем замеры
       const rawC = targetMatch.cents;
-      const isTrebleString = targetIdx >= 4;
-      // Струна G (3-я, ~196 Гц) — сильная 2-я гармоника сбивает алгоритм,
-      // поэтому ей даём усиленное усреднение и отсев выбросов, как у высоких.
-      const isG = targetIdx === 3;
-      const needsExtraAvg = isTrebleString || isG;
       if (targetIdx >= 4 && Math.abs(rawC) > 90) {
         handle.timerId = setTimeout(() => {
           const current = audioRef.current;
@@ -1258,12 +1252,12 @@ function TunerApp() {
         return;
       }
       const h = stableRef.current.history;
-      if (needsExtraAvg && h.length >= 4) {
+      // Отсев выбросов: замер, резко отличный от медианы недавних, — обертонная
+      // ошибка. На тонких струнах фильтруем жёстче (у них таких выбросов больше).
+      if (isThin && h.length >= 4) {
         const baseline = mMedian(h.slice(-5));
-        // для G порог выброса мягче (гармонические ошибки мельче октавных)
-        const outlierGap = isG ? 42 : 34;
-        const clarityGate = isG ? 0.9 : 0.88;
-        if (Math.abs(rawC - baseline) > outlierGap && pitch.clarity < clarityGate) {
+        const outlierGap = 34;
+        if (Math.abs(rawC - baseline) > outlierGap && pitch.clarity < 0.9) {
           handle.timerId = setTimeout(() => {
             const current = audioRef.current;
             if (current && !current.stopped && !document.hidden) tick(current.analyser, sampleRate);
@@ -1272,21 +1266,22 @@ function TunerApp() {
         }
       }
       h.push(rawC);
-      const maxHistory = needsExtraAvg ? 9 : 7;
+      // Тонкие струны копят более длинную историю → медиана устойчивее
+      const maxHistory = isThin ? 11 : 7;
       if (h.length > maxHistory) h.shift();
 
-      // Обновляем стрелку ТОЛЬКО когда последние 4 замера совпадают (±12¢)
-      // Во время атаки струны держим старое значение — как реальный тюнер
-      if (h.length >= (needsExtraAvg ? 4 : 3)) {
-        const recent = h.slice(needsExtraAvg ? -6 : -5);
+      // Обновляем стрелку ТОЛЬКО когда последние замеры сходятся (узкий разброс).
+      // Во время атаки струны держим старое значение — как реальный тюнер.
+      if (h.length >= (isThin ? 5 : 3)) {
+        const recent = h.slice(isThin ? -7 : -5);
         const span = Math.max(...recent) - Math.min(...recent);
-        const spanLimit = isTrebleString ? 15 : isG ? 16 : 18;
+        const spanLimit = isThin ? 16 : 18;
         if (span <= spanLimit || pitch.clarity > 0.86) {
           const measured = mClamp(mMedian(recent), -50, 50);
-          // во время лока сглаживаем сильнее — шумовые выбросы не раскачивают c;
-          // G усредняем плавнее высоких (0.8), но заметнее басов
-          const trebleFactor = isTrebleString ? 0.68 : isG ? 0.8 : 1;
-          const alpha = paramsRef.current.emaAlpha * trebleFactor * (lockRef.current.engaged ? 0.6 : 1);
+          // Демпфирование стрелки/полос: тонкие струны сглаживаем сильнее (0.5),
+          // чтобы убрать дёрганья; в локе — ещё плавнее (шум не раскачивает c).
+          const thinFactor = isThin ? 0.5 : 1;
+          const alpha = paramsRef.current.emaAlpha * thinFactor * (lockRef.current.engaged ? 0.6 : 1);
           stableRef.current.smoothCents += (measured - stableRef.current.smoothCents) * alpha;
           const c = Math.round(mClamp(stableRef.current.smoothCents, -50, 50));
           if (paramsRef.current.mode === 'AUTO' && stableRef.current.votes >= 5) setAutoIdx(bestIdx);
@@ -1309,11 +1304,9 @@ function TunerApp() {
               lockRef.current.engaged = true;
             }
           }
-          // Пока лок активен — НЕ выходим из него по расстройке или затуханию.
-          // Струна попала в строй → зелёный держится «вечно», сброс только по
-          // новому удару (детект атаки в начале tick) или смене струны.
-          // Залипание в строе: стрелка и ридаут держат ровно 0, реальное
-          // значение продолжает копиться в smoothCents.
+          // Пока струна звучит и держит строй — лок активен, стрелка и ридаут
+          // стоят ровно на 0. Сброс лока — в ветке тишины выше: как только
+          // громкость падает ниже порога (струну заглушили), мгновенно Idle.
           setCents(lockRef.current.engaged ? 0 : c);
           setReadingReady(true);
         }
